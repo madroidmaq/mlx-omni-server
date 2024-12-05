@@ -1,5 +1,4 @@
 import json
-import logging
 import time
 from typing import Callable, Optional
 
@@ -26,8 +25,6 @@ class RequestResponseLoggingMiddleware(BaseHTTPMiddleware):
         self,
         app,
         *,
-        request_level: int = logging.INFO,
-        response_level: int = logging.INFO,
         exclude_paths: Optional[list[str]] = None,
     ):
         """Initialize the middleware with custom log levels.
@@ -39,8 +36,6 @@ class RequestResponseLoggingMiddleware(BaseHTTPMiddleware):
             exclude_paths: List of paths to exclude from logging (default: None)
         """
         super().__init__(app)
-        self.request_level = request_level
-        self.response_level = response_level
         self.exclude_paths = exclude_paths or []
 
     def should_log(self, path: str) -> bool:
@@ -56,8 +51,7 @@ class RequestResponseLoggingMiddleware(BaseHTTPMiddleware):
 
         # Log request
         body = await self._get_request_body(request)
-        logger.log(
-            self.request_level,
+        logger.debug(
             f"Request [{request_id}]: {request.method} {request.url}\n"
             f"Headers:\n{json.dumps(dict(request.headers), indent=2)}\n"
             f"Body:\n{format_body(body)}",
@@ -70,8 +64,7 @@ class RequestResponseLoggingMiddleware(BaseHTTPMiddleware):
 
         # Log response
         if isinstance(response, StreamingResponse):
-            logger.log(
-                self.response_level,
+            logger.debug(
                 f"Response [{request_id}] took {process_time:.2f}s:\n"
                 f"Status: {response.status_code}\n"
                 f"Headers:\n{json.dumps(dict(response.headers), indent=2)}\n"
@@ -95,8 +88,7 @@ class RequestResponseLoggingMiddleware(BaseHTTPMiddleware):
             except UnicodeDecodeError:
                 body_text = "<Binary Content>"
 
-            logger.log(
-                self.response_level,
+            logger.debug(
                 f"Response [{request_id}] took {process_time:.2f}s:\n"
                 f"Status: {response.status_code}\n"
                 f"Headers:\n{json.dumps(dict(response.headers), indent=2)}\n"

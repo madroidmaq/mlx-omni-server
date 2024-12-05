@@ -1,30 +1,71 @@
 import logging
 import os
-import sys
-from logging.handlers import RotatingFileHandler
 
+# ANSI escape codes for colors
+COLORS = {
+    "verbose": "\x1b[38;5;244m",  # Grey
+    "debug": "\x1b[38;5;33m",  # Blue (#2196F3)
+    "info": "\x1b[38;5;77m",  # Green
+    "warning": "\x1b[38;5;220m",  # Yellow
+    "error": "\x1b[38;5;196m",  # Red
+    "critical": "\x1b[38;5;199m",  # Purple
+    "reset": "\x1b[0m",
+}
+
+# Create logs directory
 log_dir = "logs"
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 
-log_formatter = logging.Formatter(
-    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
 
-logger = logging.getLogger("uvicorn")
-logger.setLevel(logging.DEBUG)
+class ColorFormatter(logging.Formatter):
+    """Custom color formatter for logging"""
 
-if not logger.handlers:
-    file_handler = RotatingFileHandler(
-        os.path.join(log_dir, "app.log"),
-        maxBytes=10 * 1024 * 1024,  # 10MB
-        backupCount=5,
-    )
-    file_handler.setFormatter(log_formatter)
-    logger.addHandler(file_handler)
+    format_str = "%(levelname)s: %(message)s"
 
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(log_formatter)
-    logger.addHandler(console_handler)
+    FORMATS = {
+        logging.DEBUG: COLORS["debug"] + format_str + COLORS["reset"],
+        logging.INFO: COLORS["info"] + format_str + COLORS["reset"],
+        logging.WARNING: COLORS["warning"] + format_str + COLORS["reset"],
+        logging.ERROR: COLORS["error"] + format_str + COLORS["reset"],
+        logging.CRITICAL: COLORS["critical"] + format_str + COLORS["reset"],
+    }
 
-logger.propagate = False
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+
+def get_logger(name: str = "mlx_omni") -> logging.Logger:
+    """Get project logger
+
+    Args:
+        name: Module name, typically pass in __name__
+
+    Returns:
+        logging.Logger: Configured logger instance
+    """
+    # Create logger
+    _logger = logging.getLogger(name)  # Use module name directly as logger name
+
+    # Set log level
+    _logger.setLevel(os.environ.get("MLX_OMNI_LOG_LEVEL", "INFO").upper())
+
+    # If logger already has handlers, it's already configured
+    if _logger.handlers:
+        return _logger
+
+    # Add console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(ColorFormatter())
+    _logger.addHandler(console_handler)
+
+    # Disable log propagation to parent logger
+    _logger.propagate = False
+
+    return _logger
+
+
+# Default logger
+logger = get_logger()
