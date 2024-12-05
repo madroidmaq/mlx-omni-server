@@ -1,11 +1,14 @@
 import json
+import logging
+import re
 import uuid
 from typing import List, Optional
 
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 
 from ....schemas.chat_schema import ChatMessage, Role
-from ....schemas.tools_schema import FunctionCall, ToolCall
+from ....schemas.tools_schema import FunctionCall, Tool, ToolCall
+from ....utils.logger import logger
 from .chat_tokenizer import ChatTokenizer
 
 
@@ -14,15 +17,16 @@ class Qwen2ChatTokenizer(ChatTokenizer):
 
     def __init__(self, tokenizer: TokenizerWrapper):
         super().__init__(tokenizer)
-        self.start_tool_calls = "<tool_call>"
+        self.start_tool_calls = "<tool_call>\n"
         self.end_tool_calls = "</tool_call>"
         self.strict_mode = False
 
     def decode_stream(self, text: str, delta_text: str) -> Optional[List[ToolCall]]:
         pass
 
-    def _parse_strict_tools(self, text: str) -> Optional[list[dict]]:
+    def _parse_strict_tools(self, text: str) -> Optional[List[ToolCall]]:
         tool_calls = []
+        logger.debug(f"_parse_strict_tools: {text}")
 
         if (
             text.strip().startswith(self.start_tool_calls)
@@ -55,33 +59,72 @@ class Qwen2ChatTokenizer(ChatTokenizer):
                         )
                     )
             except (json.JSONDecodeError, KeyError, ValueError) as e:
-                print(f"Error parsing tool call: {e}")
+                logger.error(f"Error parsing tool call: {e}")
                 return None
 
-        return tool_calls
+        return tool_calls if tool_calls else None
+
+    def _parse_tools(self, text: str) -> Optional[list[dict]]:
+        """
+        Parse tool calls from text using regex to find JSON patterns containing name and arguments.
+        Returns a list of ToolCall objects or None if no valid tool calls are found.
+        """
+        # Pattern to match JSON objects while being lenient with whitespace and newlines
+        pattern = r'(?s)\{[^{]*?"name"\s*?:\s*?"[^"]+?"[^{]*?"arguments"\s*?:\s*?(?:{[^}]*}|"[^"]*")[^}]*\}|\{[^{]*?"arguments"\s*?:\s*?(?:{[^}]*}|"[^"]*")[^{]*?"name"\s*?:\s*?"[^"]+?"[^}]*\}'
+
+        try:
+            # Find all potential JSON matches
+            matches = list(re.finditer(pattern, text))
+
+            for match in matches:
+                json_str = match.group(0)
+                try:
+                    tool_data = json.loads(json_str)
+
+                    # Verify it's a dict and has required fields
+                    if (
+                        not isinstance(tool_data, dict)
+                        or "name" not in tool_data
+                        or "arguments" not in tool_data
+                    ):
+                        continue
+
+                    if not isinstance(tool_data["name"], str):
+                        continue
+
+                    # Process arguments
+                    args = tool_data["arguments"]
+                    arguments = args if isinstance(args, str) else json.dumps(args)
+
+                    # Create tool call
+                    tool_call = ToolCall(
+                        id=f"call_{uuid.uuid4().hex[:8]}",
+                        function=FunctionCall(
+                            name=tool_data["name"],
+                            arguments=arguments,
+                        ),
+                    )
+                    return [tool_call]
+
+                except json.JSONDecodeError:
+                    continue
+
+        except Exception as e:
+            logger.error(f"Error during regex matching: {str(e)}")
+            return None
+
+        return None
 
     def decode(self, text: str) -> Optional[ChatMessage]:
-        """Parse tool calls from model output.
-
-        The model outputs function calls in the format:
-        <tool_call>
-        {"name": "get_current_weather", "arguments": {"location": "Boston, MA", "unit": "fahrenheit"}}
-        </tool_call>
-
-        Args:
-            text: The model output text containing tool calls
-
-        Returns:
-            ChatMessage: A message containing the parsed tool calls
-        """
-        # Look for JSON patterns in the text
-        tool_calls = []
+        """Parse tool calls from model output."""
 
         if self.strict_mode:
             tool_calls = self._parse_strict_tools(text)
+        else:
+            tool_calls = self._parse_tools(text)
 
         return ChatMessage(
             role=Role.ASSISTANT,
             content=None if tool_calls else text,
-            tool_calls=tool_calls if tool_calls else None,
+            tool_calls=tool_calls,
         )
