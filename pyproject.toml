@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mlx-omni-server"
-version = "0.1.0"
+version = "0.1.1"
 description = ""
 authors = ["madroid <madroidmaq@gmail.com>"]
 readme = "README.md"
