@@ -9,7 +9,6 @@ from .tools.chat_tokenizer import ChatTokenizer
 from .tools.hugging_face import HuggingFaceChatTokenizer
 from .tools.llama3 import LlamaChatTokenizer
 from .tools.mistral import MistralChatTokenizer
-from .tools.qwen2 import Qwen2ChatTokenizer
 
 
 def load_tools_handler(model_type: str, tokenizer: TokenizerWrapper) -> ChatTokenizer:
@@ -18,7 +17,7 @@ def load_tools_handler(model_type: str, tokenizer: TokenizerWrapper) -> ChatToke
         # Llama models
         "llama": LlamaChatTokenizer,
         "mistral": MistralChatTokenizer,
-        "qwen2": Qwen2ChatTokenizer,
+        "qwen2": HuggingFaceChatTokenizer,
     }
 
     # Get handler class based on model ID or use Llama handler as default
