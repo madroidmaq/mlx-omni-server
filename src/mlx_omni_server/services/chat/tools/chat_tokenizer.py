@@ -4,7 +4,7 @@ from typing import List, Optional
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 
 from ....schemas.chat_schema import ChatMessage
-from ....schemas.tools_schema import Tool, ToolCall
+from ....schemas.tools_schema import Tool, ToolCall, ToolChoice, ToolChoiceType
 
 
 class ChatTokenizer(ABC):
@@ -20,7 +20,7 @@ class ChatTokenizer(ABC):
         self,
         messages: List[ChatMessage],
         tools: Optional[List[Tool]] = None,
-        tool_choice: Optional[str] = None,
+        tool_choice: Optional[ToolChoiceType] = None,
         **kwargs,
     ) -> str:
         """Encode tools and conversation into a prompt string.
@@ -40,8 +40,12 @@ class ChatTokenizer(ABC):
             **kwargs,
         )
 
-        if tools and tool_choice == "required":
-            prompt += self.start_tool_calls
+        if tools:
+            if (
+                isinstance(tool_choice, ToolChoice)
+                and tool_choice == ToolChoice.REQUIRED
+            ):
+                prompt += self.start_tool_calls
 
         return prompt
 
