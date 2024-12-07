@@ -156,6 +156,7 @@ class MLXModel(BaseMLXModel):
             prompt = self._chat_tokenizer.encode(
                 messages=request.messages,
                 tools=request.tools,
+                tool_choice=request.tool_choice.value if request.tool_choice else None,
             )
             logger.debug(f"Encoded prompt:\n{prompt}")
 

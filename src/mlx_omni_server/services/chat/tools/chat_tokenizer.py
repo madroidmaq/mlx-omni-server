@@ -20,6 +20,7 @@ class ChatTokenizer(ABC):
         self,
         messages: List[ChatMessage],
         tools: Optional[List[Tool]] = None,
+        tool_choice: Optional[str] = None,
         **kwargs,
     ) -> str:
         """Encode tools and conversation into a prompt string.
@@ -38,6 +39,9 @@ class ChatTokenizer(ABC):
             add_generation_prompt=True,
             **kwargs,
         )
+
+        if tools and tool_choice == "required":
+            prompt += self.start_tool_calls
 
         return prompt
 
