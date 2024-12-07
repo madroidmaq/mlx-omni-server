@@ -98,24 +98,23 @@ class MLXModel(BaseMLXModel):
                 ),
                 **kwargs,
             ):
-                if isinstance(response, GenerationResponse):
-                    text = response.text
+                text = response.text
 
-                    # Process logprobs if available
-                    logprobs = None
-                    if request.logprobs:
-                        logprobs = self._process_logprobs(
-                            tokenizer, response, request.top_logprobs
-                        )
-
-                    yield GenerateResult(
-                        text=text,
-                        token=response.token,
-                        finished=False,
-                        prompt_tokens=response.prompt_tokens,
-                        generation_tokens=response.generation_tokens,
-                        logprobs=logprobs,
+                # Process logprobs if available
+                logprobs = None
+                if request.logprobs:
+                    logprobs = self._process_logprobs(
+                        tokenizer, response, request.top_logprobs
                     )
+
+                yield GenerateResult(
+                    text=text,
+                    token=response.token,
+                    finished=False,
+                    prompt_tokens=response.prompt_tokens,
+                    generation_tokens=response.generation_tokens,
+                    logprobs=logprobs,
+                )
 
         except Exception as e:
             logger.error(f"Error during stream generation: {str(e)}", exc_info=True)
