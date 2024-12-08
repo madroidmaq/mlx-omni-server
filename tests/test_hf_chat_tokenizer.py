@@ -9,7 +9,7 @@ from mlx_omni_server.schemas.chat_schema import Role
 from mlx_omni_server.services.chat.tools.hugging_face import HuggingFaceChatTokenizer
 
 
-class TestQwen2ChatTokenizer(unittest.TestCase):
+class TestHuggingFaceChatTokenizer(unittest.TestCase):
     def setUp(self):
         mock_tokenizer = Mock(spec=TokenizerWrapper)
         self.hf_tokenizer = HuggingFaceChatTokenizer(mock_tokenizer)

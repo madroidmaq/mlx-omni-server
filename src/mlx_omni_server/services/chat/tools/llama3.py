@@ -10,7 +10,7 @@ from ....schemas.tools_schema import ToolCall
 from .chat_tokenizer import ChatTokenizer
 
 
-class LlamaChatTokenizer(ChatTokenizer):
+class Llama3ChatTokenizer(ChatTokenizer):
     """Tools handler for Llama models."""
 
     def __init__(self, tokenizer: TokenizerWrapper):
