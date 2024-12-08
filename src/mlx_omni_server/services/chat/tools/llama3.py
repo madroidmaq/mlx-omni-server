@@ -5,7 +5,13 @@ from typing import List, Optional
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 
 from ....schemas.chat_schema import ChatMessage, Role
-from ....schemas.tools_schema import FunctionCall, ToolCall
+from ....schemas.tools_schema import (
+    FunctionCall,
+    SpecificToolChoice,
+    Tool,
+    ToolCall,
+    ToolChoiceType,
+)
 from ....utils.logger import logger
 from .chat_tokenizer import ChatTokenizer
 
@@ -22,6 +28,26 @@ class Llama3ChatTokenizer(ChatTokenizer):
 
     def decode_stream(self, text: str, delta_text: str) -> Optional[List[ToolCall]]:
         pass
+
+    def encode(
+        self,
+        messages: List[ChatMessage],
+        tools: Optional[List[Tool]] = None,
+        tool_choice: Optional[ToolChoiceType] = None,
+        **kwargs,
+    ) -> str:
+        prompt = super().encode(messages, tools, tool_choice, **kwargs)
+
+        if tools:
+            if isinstance(tool_choice, SpecificToolChoice):
+                self.pre_fill_tools_prompt += self.start_tool_calls
+                function_name = tool_choice.function["name"]
+
+                self.pre_fill_tools_prompt += (
+                    f"""{{"name": "{function_name}", "arguments":"""
+                )
+
+        return prompt + self.pre_fill_tools_prompt
 
     def _parse_strict_tools(self, text: str) -> Optional[List[ToolCall]]:
         tool_calls = []
