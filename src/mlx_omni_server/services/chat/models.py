@@ -7,18 +7,17 @@ from .base_models import BaseMLXModel
 from .mlx_model import MLXModel
 from .tools.chat_tokenizer import ChatTokenizer
 from .tools.hugging_face import HuggingFaceChatTokenizer
-from .tools.llama3 import LlamaChatTokenizer
+from .tools.llama3 import Llama3ChatTokenizer
 from .tools.mistral import MistralChatTokenizer
-from .tools.qwen2 import Qwen2ChatTokenizer
 
 
 def load_tools_handler(model_type: str, tokenizer: TokenizerWrapper) -> ChatTokenizer:
     """Factory function to load appropriate tools handler based on model ID."""
     handlers: dict[str, Type[ChatTokenizer]] = {
         # Llama models
-        "llama": LlamaChatTokenizer,
+        "llama": Llama3ChatTokenizer,
         "mistral": MistralChatTokenizer,
-        "qwen2": Qwen2ChatTokenizer,
+        "qwen2": HuggingFaceChatTokenizer,
     }
 
     # Get handler class based on model ID or use Llama handler as default
