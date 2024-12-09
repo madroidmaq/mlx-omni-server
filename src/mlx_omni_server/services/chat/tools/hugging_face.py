@@ -92,56 +92,52 @@ class HuggingFaceChatTokenizer(ChatTokenizer):
 
         return tool_calls if tool_calls else None
 
+    def _extract_tools(self, text: str):
+        results = []
+
+        pattern = r'"name"\s*:\s*"([^"]+)".*?(?:"arguments"|"parameters")\s*:\s*(\{.*?\}|\[.*?\]|null|"[^"]*")'
+
+        matches = re.finditer(pattern, text, re.DOTALL)
+
+        for match in matches:
+            name, args_str = match.groups()
+            try:
+                arguments = json.loads(args_str)
+            except:
+                arguments = args_str
+
+            results.append({"name": name, "arguments": arguments})
+
+        return results
+
     def _parse_tools(self, text: str) -> Optional[list[dict]]:
         """
         Parse tool calls from text using regex to find JSON patterns containing name and arguments.
         Returns a list of ToolCall objects or None if no valid tool calls are found.
         """
-        # Pattern to match JSON objects while being lenient with whitespace and newlines
-        pattern = r'(?s)\{[^{]*?"name"\s*?:\s*?"[^"]+?"[^{]*?"arguments"\s*?:\s*?(?:{[^}]*}|"[^"]*")[^}]*\}|\{[^{]*?"arguments"\s*?:\s*?(?:{[^}]*}|"[^"]*")[^{]*?"name"\s*?:\s*?"[^"]+?"[^}]*\}'
-
         try:
-            # Find all potential JSON matches
-            matches = list(re.finditer(pattern, text))
-
-            for match in matches:
-                json_str = match.group(0)
-                try:
-                    tool_data = json.loads(json_str)
-
-                    # Verify it's a dict and has required fields
-                    if (
-                        not isinstance(tool_data, dict)
-                        or "name" not in tool_data
-                        or "arguments" not in tool_data
-                    ):
-                        continue
-
-                    if not isinstance(tool_data["name"], str):
-                        continue
-
+            tool_calls = self._extract_tools(text)
+            if tool_calls:
+                results = []
+                for call in tool_calls:
                     # Process arguments
-                    args = tool_data["arguments"]
+                    args = call["arguments"]
                     arguments = args if isinstance(args, str) else json.dumps(args)
 
-                    # Create tool call
                     tool_call = ToolCall(
                         id=f"call_{uuid.uuid4().hex[:8]}",
                         function=FunctionCall(
-                            name=tool_data["name"],
+                            name=call["name"],
                             arguments=arguments,
                         ),
                     )
-                    return [tool_call]
+                    results.append(tool_call)
+                return results
 
-                except json.JSONDecodeError:
-                    continue
-
+            return None
         except Exception as e:
             logger.error(f"Error during regex matching: {str(e)}")
             return None
-
-        return None
 
     def decode(self, text: str) -> Optional[ChatMessage]:
         """Parse tool calls from model output."""
