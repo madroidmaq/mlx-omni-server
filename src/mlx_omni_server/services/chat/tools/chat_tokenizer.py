@@ -3,8 +3,8 @@ from typing import List, Optional
 
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 
-from ....schemas.chat_schema import ChatMessage
-from ....schemas.tools_schema import Tool, ToolCall
+from ....schemas.chat_schema import ChatMessage, Role
+from ....schemas.tools_schema import Tool, ToolCall, ToolChoice, ToolChoiceType
 
 
 class ChatTokenizer(ABC):
@@ -20,6 +20,7 @@ class ChatTokenizer(ABC):
         self,
         messages: List[ChatMessage],
         tools: Optional[List[Tool]] = None,
+        tool_choice: Optional[ToolChoiceType] = None,
         **kwargs,
     ) -> str:
         """Encode tools and conversation into a prompt string.
@@ -31,13 +32,34 @@ class ChatTokenizer(ABC):
         if tools:
             schema_tools = [tool.model_dump(exclude_none=True) for tool in tools]
 
-        prompt = self.tokenizer.apply_chat_template(
-            conversation=messages,
-            tools=schema_tools,
-            tokenize=False,
-            add_generation_prompt=True,
-            **kwargs,
-        )
+        should_prefill = messages[-1].role == Role.ASSISTANT
+
+        if should_prefill:
+            conversation = [
+                message.model_dump(exclude_none=True) for message in messages
+            ]
+            prompt = self.tokenizer.apply_chat_template(
+                conversation=conversation,
+                tools=schema_tools,
+                tokenize=False,
+                continue_final_message=True,
+                **kwargs,
+            )
+        else:
+            prompt = self.tokenizer.apply_chat_template(
+                conversation=messages,
+                tools=schema_tools,
+                tokenize=False,
+                add_generation_prompt=True,
+                **kwargs,
+            )
+
+        if tools:
+            if (
+                isinstance(tool_choice, ToolChoice)
+                and tool_choice == ToolChoice.REQUIRED
+            ):
+                prompt += self.start_tool_calls
 
         return prompt
 

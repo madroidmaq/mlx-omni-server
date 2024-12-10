@@ -5,14 +5,14 @@ from unittest.mock import Mock
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 
 from mlx_omni_server.schemas.chat_schema import Role
-from mlx_omni_server.services.chat.tools.llama3 import LlamaChatTokenizer
+from mlx_omni_server.services.chat.tools.llama3 import Llama3ChatTokenizer
 from mlx_omni_server.services.chat.tools.mistral import MistralChatTokenizer
 
 
-class TestChatTokenizer(unittest.TestCase):
+class TestMistralChatTokenizer(unittest.TestCase):
     def setUp(self):
         self.mock_tokenizer = Mock(spec=TokenizerWrapper)
-        self.llama_tokenizer = LlamaChatTokenizer(self.mock_tokenizer)
+        self.llama_tokenizer = Llama3ChatTokenizer(self.mock_tokenizer)
         self.mistral_tokenizer = MistralChatTokenizer(self.mock_tokenizer)
 
     def test_mistral_decode_single_tool_call(self):
