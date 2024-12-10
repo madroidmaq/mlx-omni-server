@@ -1,5 +1,4 @@
 import json
-import re
 import uuid
 from typing import List, Optional
 
@@ -15,6 +14,7 @@ from ....schemas.tools_schema import (
 )
 from ....utils.logger import logger
 from .chat_tokenizer import ChatTokenizer
+from .utils import parse_tool_calls
 
 
 class HuggingFaceChatTokenizer(ChatTokenizer):
@@ -92,53 +92,6 @@ class HuggingFaceChatTokenizer(ChatTokenizer):
 
         return tool_calls if tool_calls else None
 
-    def _extract_tools(self, text: str):
-        results = []
-
-        pattern = r'"name"\s*:\s*"([^"]+)".*?(?:"arguments"|"parameters")\s*:\s*(\{.*?\}|\[.*?\]|null|"[^"]*")'
-
-        matches = re.finditer(pattern, text, re.DOTALL)
-
-        for match in matches:
-            name, args_str = match.groups()
-            try:
-                arguments = json.loads(args_str)
-            except:
-                arguments = args_str
-
-            results.append({"name": name, "arguments": arguments})
-
-        return results
-
-    def _parse_tools(self, text: str) -> Optional[list[dict]]:
-        """
-        Parse tool calls from text using regex to find JSON patterns containing name and arguments.
-        Returns a list of ToolCall objects or None if no valid tool calls are found.
-        """
-        try:
-            tool_calls = self._extract_tools(text)
-            if tool_calls:
-                results = []
-                for call in tool_calls:
-                    # Process arguments
-                    args = call["arguments"]
-                    arguments = args if isinstance(args, str) else json.dumps(args)
-
-                    tool_call = ToolCall(
-                        id=f"call_{uuid.uuid4().hex[:8]}",
-                        function=FunctionCall(
-                            name=call["name"],
-                            arguments=arguments,
-                        ),
-                    )
-                    results.append(tool_call)
-                return results
-
-            return None
-        except Exception as e:
-            logger.error(f"Error during regex matching: {str(e)}")
-            return None
-
     def decode(self, text: str) -> Optional[ChatMessage]:
         """Parse tool calls from model output."""
         response = self.pre_fill_tools_prompt + text
@@ -146,7 +99,7 @@ class HuggingFaceChatTokenizer(ChatTokenizer):
         if self.strict_mode:
             tool_calls = self._parse_strict_tools(response)
         else:
-            tool_calls = self._parse_tools(response)
+            tool_calls = parse_tool_calls(response)
 
         return ChatMessage(
             role=Role.ASSISTANT,
