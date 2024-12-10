@@ -38,6 +38,16 @@ async def create_chat_completion(request: ChatCompletionRequest):
     )
 
 
+_last_model_id = None
+_last_chat_service = None
+
+
 def _create_chat_service(model_id: str):
+    global _last_model_id, _last_chat_service
+    if model_id == _last_model_id:
+        return _last_chat_service
+
     model = load_model(model_id)
-    return ChatService(model)
+    _last_chat_service = ChatService(model)
+    _last_model_id = model_id
+    return _last_chat_service
