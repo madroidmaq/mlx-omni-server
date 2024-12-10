@@ -10,8 +10,8 @@ class ToolType(str, Enum):
 
 
 class FunctionParameters(BaseModel):
-    type: str = "object"
-    properties: Dict[str, Any]
+    type: Optional[str] = None
+    properties: Optional[Dict[str, Any]] = None
     required: Optional[List[str]] = None
 
 
