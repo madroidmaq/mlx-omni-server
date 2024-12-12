@@ -14,6 +14,7 @@ from ....schemas.tools_schema import (
 )
 from ....utils.logger import logger
 from .chat_tokenizer import ChatTokenizer
+from .utils import parse_tool_calls
 
 
 class Llama3ChatTokenizer(ChatTokenizer):
@@ -84,65 +85,17 @@ class Llama3ChatTokenizer(ChatTokenizer):
 
         return tool_calls if tool_calls else None
 
-    def _parse_tools(self, text: str) -> Optional[List[ToolCall]]:
-        """
-        Parse tool calls from text using a simple JSON extraction method.
-        Returns a list of ToolCall objects or None if no valid tool calls are found.
-        """
-        try:
-            start = text.find("{")
-            while start >= 0:
-                count = 1
-                pos = start + 1
-
-                while pos < len(text) and count > 0:
-                    if text[pos] == "{":
-                        count += 1
-                    elif text[pos] == "}":
-                        count -= 1
-                        if count == 0:
-                            try:
-                                json_str = text[start : pos + 1]
-                                tool_data = json.loads(json_str)
-
-                                if isinstance(tool_data, dict) and "name" in tool_data:
-                                    params = tool_data.get(
-                                        "arguments", tool_data.get("parameters", {})
-                                    )
-                                    if not isinstance(params, dict):
-                                        params = {}
-
-                                    return [
-                                        ToolCall.from_llama_output(
-                                            name=tool_data["name"],
-                                            parameters=params,
-                                            call_id=f"call_{uuid.uuid4().hex[:8]}",
-                                        )
-                                    ]
-                            except (json.JSONDecodeError, KeyError) as e:
-                                logger.debug(f"Error parsing tool call: {e}")
-                    pos += 1
-
-                start = text.find("{", start + 1)
-
-        except Exception as e:
-            logger.error(f"Error during JSON extraction: {str(e)}")
-
-        return None
-
     def decode(self, text: str) -> Optional[ChatMessage]:
         """
         Parse tool calls from model output.
         The model outputs function calls in JSON format with 'name' and optional 'arguments' fields.
         """
         response = self.pre_fill_tools_prompt + text
-        tool_calls = None
 
-        # 检查是否可能包含工具调用
         if self.strict_mode:
             tool_calls = self._parse_strict_tools(response)
         else:
-            tool_calls = self._parse_tools(response)
+            tool_calls = parse_tool_calls(response)
 
         return ChatMessage(
             role=Role.ASSISTANT,

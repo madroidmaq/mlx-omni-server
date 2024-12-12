@@ -12,6 +12,7 @@ def _extract_tools(text: str):
 
     pattern = (
         r'"name"\s*:\s*"([^"]+)"'  # Match name
+        r"(?:"  # Start non-capturing group for optional arguments/parameters
         r"[^}]*?"  # Allow any characters in between
         r'(?:"arguments"|"parameters")'  # Match arguments or parameters
         r"\s*:\s*"  # Match colon and whitespace
@@ -21,6 +22,7 @@ def _extract_tools(text: str):
         r"|null"  # Match null
         r'|"[^"]*"'  # Match strings
         r")"  # End capturing
+        r")?"  # Make the entire arguments/parameters section optional
     )
 
     matches = re.finditer(pattern, text, re.DOTALL)
@@ -39,7 +41,7 @@ def _extract_tools(text: str):
     return results
 
 
-def parse_tool_calls(text: str) -> Optional[list[dict]]:
+def parse_tool_calls(text: str) -> Optional[list[ToolCall]]:
     """
     Parse tool calls from text using regex to find JSON patterns containing name and arguments.
     Returns a list of ToolCall objects or None if no valid tool calls are found.
