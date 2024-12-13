@@ -1,6 +1,6 @@
 import time
 import uuid
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Generator, Optional
 
 import mlx.core as mx
 from mlx_lm.sample_utils import make_sampler
@@ -77,12 +77,12 @@ class MLXModel(BaseMLXModel):
 
         return {**token_info, "top_logprobs": top_logprobs}
 
-    async def _stream_generate(
+    def _stream_generate(
         self,
         prompt: str,
         request: ChatCompletionRequest,
         **kwargs,
-    ) -> AsyncGenerator[GenerateResult, None]:
+    ) -> Generator[GenerationResponse, None, None]:
         try:
             tokenizer = self._chat_tokenizer.tokenizer
             for response in stream_generate(
@@ -120,7 +120,7 @@ class MLXModel(BaseMLXModel):
             logger.error(f"Error during stream generation: {str(e)}", exc_info=True)
             raise
 
-    async def generate(
+    def generate(
         self,
         request: ChatCompletionRequest,
     ) -> ChatCompletionResponse:
@@ -139,7 +139,7 @@ class MLXModel(BaseMLXModel):
 
             params = self._get_generation_params(request)
 
-            async for result in self._stream_generate(
+            for result in self._stream_generate(
                 prompt=prompt,
                 request=request,
                 **params,
@@ -184,7 +184,7 @@ class MLXModel(BaseMLXModel):
             logger.error(f"Failed to generate completion: {str(e)}", exc_info=True)
             raise RuntimeError(f"Failed to generate completion: {str(e)}")
 
-    async def stream_generate(
+    def stream_generate(
         self,
         request: ChatCompletionRequest,
     ) -> AsyncGenerator[ChatCompletionChunk, None]:
@@ -202,7 +202,7 @@ class MLXModel(BaseMLXModel):
             )
             logger.debug(f"Encoded prompt:\n{prompt}")
             completion = ""
-            async for result in self._stream_generate(
+            for result in self._stream_generate(
                 prompt=prompt,
                 request=request,
                 **params,

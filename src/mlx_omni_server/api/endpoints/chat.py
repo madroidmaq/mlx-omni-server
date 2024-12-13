@@ -19,11 +19,11 @@ async def create_chat_completion(request: ChatCompletionRequest):
     chat_service = _create_chat_service(request.model)
 
     if not request.stream:
-        completion = await chat_service.generate_completion(request)
+        completion = chat_service.generate_completion(request)
         return JSONResponse(content=completion.model_dump(exclude_none=True))
 
     async def event_generator() -> Generator[str, None, None]:
-        async for chunk in chat_service.generate_stream(request):
+        for chunk in chat_service.generate_stream(request):
             yield f"data: {json.dumps(chunk.model_dump(exclude_none=True))}\n\n"
 
         yield "data: [DONE]\n\n"

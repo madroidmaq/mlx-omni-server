@@ -1,4 +1,4 @@
-from typing import AsyncGenerator
+from typing import Generator
 
 from ..schemas.chat_schema import (
     ChatCompletionChunk,
@@ -14,15 +14,15 @@ class ChatService:
     def __init__(self, model: BaseMLXModel):
         self.model = model
 
-    async def generate_completion(
+    def generate_completion(
         self, request: ChatCompletionRequest
     ) -> ChatCompletionResponse:
         """Generate a chat completion."""
-        return await self.model.generate(request)
+        return self.model.generate(request)
 
-    async def generate_stream(
+    def generate_stream(
         self, request: ChatCompletionRequest
-    ) -> AsyncGenerator[ChatCompletionChunk, None]:
+    ) -> Generator[ChatCompletionChunk, None, None]:
         """Generate a streaming chat completion."""
-        async for chunk in self.model.stream_generate(request):
+        for chunk in self.model.stream_generate(request):
             yield chunk
