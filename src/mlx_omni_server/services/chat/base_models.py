@@ -15,7 +15,7 @@ class GenerateResult:
 
     text: str
     token: int
-    finished: bool
+    finish_reason: Optional[str]
     prompt_tokens: int
     generation_tokens: int
     logprobs: Optional[Dict[str, Any]] = None

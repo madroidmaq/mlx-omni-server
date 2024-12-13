@@ -110,7 +110,7 @@ class MLXModel(BaseMLXModel):
                 yield GenerateResult(
                     text=text,
                     token=response.token,
-                    finished=False,
+                    finish_reason=response.finish_reason,
                     prompt_tokens=response.prompt_tokens,
                     generation_tokens=response.generation_tokens,
                     logprobs=logprobs,
@@ -119,28 +119,6 @@ class MLXModel(BaseMLXModel):
         except Exception as e:
             logger.error(f"Error during stream generation: {str(e)}", exc_info=True)
             raise
-
-    def _build_chat_response(
-        self,
-        model: str,
-        message: ChatMessage,
-        usage: ChatCompletionUsage,
-        logprobs: Optional[Dict[str, Any]] = None,
-    ) -> ChatCompletionResponse:
-        return ChatCompletionResponse(
-            id=f"chatcmpl-{uuid.uuid4().hex[:10]}",
-            created=int(time.time()),
-            model=model,
-            choices=[
-                ChatCompletionChoice(
-                    index=0,
-                    message=message,
-                    finish_reason="tool_calls" if message.tool_calls else "stop",
-                    logprobs=logprobs,
-                )
-            ],
-            usage=usage,
-        )
 
     async def generate(
         self,
@@ -178,16 +156,28 @@ class MLXModel(BaseMLXModel):
 
             message = self._chat_tokenizer.decode(completion)
 
-            return self._build_chat_response(
+            return ChatCompletionResponse(
+                id=f"chatcmpl-{uuid.uuid4().hex[:10]}",
+                created=int(time.time()),
                 model=request.model,
-                message=message,
+                choices=[
+                    ChatCompletionChoice(
+                        index=0,
+                        message=message,
+                        finish_reason=(
+                            "tool_calls" if message.tool_calls else result.finish_reason
+                        ),
+                        logprobs=(
+                            {"content": logprobs_result_list}
+                            if logprobs_result_list
+                            else None
+                        ),
+                    )
+                ],
                 usage=ChatCompletionUsage(
                     prompt_tokens=result.prompt_tokens,
                     completion_tokens=result.generation_tokens,
                     total_tokens=result.prompt_tokens + result.generation_tokens,
-                ),
-                logprobs=(
-                    {"content": logprobs_result_list} if logprobs_result_list else None
                 ),
             )
         except Exception as e:
@@ -227,7 +217,7 @@ class MLXModel(BaseMLXModel):
                         ChatCompletionChunkChoice(
                             index=0,
                             delta=ChatMessage(role=Role.ASSISTANT, content=result.text),
-                            finish_reason="stop" if result.finished else None,
+                            finish_reason=result.finish_reason,
                             logprobs=result.logprobs,
                         )
                     ],
