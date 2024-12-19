@@ -34,11 +34,6 @@ def build_parser():
         help="Port to bind the server to, defaults to 10240",
     )
     parser.add_argument(
-        "--reload",
-        action="store_true",
-        help="Enable auto-reload on code changes, defaults to False",
-    )
-    parser.add_argument(
         "--workers",
         type=int,
         default=3,
@@ -62,16 +57,11 @@ def start():
     # Set log level through environment variable
     os.environ["MLX_OMNI_LOG_LEVEL"] = args.log_level
 
-    # Get the package directory
-    package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
     # Start server with uvicorn
     uvicorn.run(
         "mlx_omni_server.main:app",
         host=args.host,
         port=args.port,
-        reload=args.reload,
-        reload_dirs=[package_dir] if args.reload else None,
         log_level=args.log_level,
         use_colors=True,
         workers=args.workers,
