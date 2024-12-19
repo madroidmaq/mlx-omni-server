@@ -74,5 +74,5 @@ def start():
         reload_dirs=[package_dir] if args.reload else None,
         log_level=args.log_level,
         use_colors=True,
-        workers=workers.workers,
+        workers=args.workers,
     )
