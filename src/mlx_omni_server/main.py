@@ -39,6 +39,12 @@ def build_parser():
         help="Enable auto-reload on code changes, defaults to False",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=3,
+        help="Number of workers to use, defaults to 3",
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="info",
@@ -68,4 +74,5 @@ def start():
         reload_dirs=[package_dir] if args.reload else None,
         log_level=args.log_level,
         use_colors=True,
+        workers=workers.workers,
     )
