@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mlx-omni-server"
-version = "0.2.0"
+version = "0.2.1"
 description = ""
 authors = ["madroid <madroidmaq@gmail.com>"]
 readme = "README.md"
@@ -37,7 +37,6 @@ black = "^24.10.0"
 isort = "^5.13.2"
 
 [tool.poetry.scripts]
-start = "mlx_omni_server.main:start"
 mlx-omni-server = "mlx_omni_server.main:start"
 
 [build-system]

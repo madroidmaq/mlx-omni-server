@@ -51,7 +51,9 @@ pip install mlx-omni-server
 mlx-omni-server
 ```
 
-you can use `--port` to specify a different port,such as: `mlx-omni-server start --port 10240`, default port is 10240.
+you can use `--port` to specify a different port,such as: `mlx-omni-server --port 10240`, default port is 10240.
+
+You can view more startup parameters by using `mlx-omni-server --help`.
 
 
 2. Use with OpenAI SDK:
