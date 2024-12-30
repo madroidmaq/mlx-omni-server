@@ -1,4 +1,5 @@
 import json
+import re
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Union
 
@@ -138,6 +139,59 @@ class StreamOptions(BaseModel):
     include_usage: bool = False
 
 
+class JsonSchemaFormat(BaseModel):
+    description: Optional[str] = Field(
+        None, description="A description of what the response format is for"
+    )
+    name: str = Field(
+        ...,
+        description="The name of the response format",
+        pattern="^[a-zA-Z0-9_-]{1,64}$",
+    )
+    schema: Optional[Dict[str, Any]] = Field(
+        None, description="The schema for the response format"
+    )
+    strict: Optional[bool] = Field(
+        False, description="Whether to enable strict schema adherence"
+    )
+
+    @field_validator("name")
+    def validate_name(cls, v: str) -> str:
+        if len(v) > 64:
+            raise ValueError("Name must not exceed 64 characters")
+        if not re.match("^[a-zA-Z0-9_-]+$", v):
+            raise ValueError(
+                "Name must only contain a-z, A-Z, 0-9, underscores and dashes"
+            )
+        return v
+
+
+class ResponseFormat(BaseModel):
+    type: str = Field(..., description="The type of response format")
+    json_schema: Optional[JsonSchemaFormat] = Field(
+        None, description="The JSON schema configuration when type is 'json_schema'"
+    )
+
+    @field_validator("type")
+    def validate_type(cls, v):
+        if v not in ["text", "json_object", "json_schema"]:
+            raise ValueError(
+                "Type must be one of: 'text', 'json_object', or 'json_schema'"
+            )
+        return v
+
+    @field_validator("json_schema")
+    def validate_json_schema(cls, v, values):
+        type_val = values.data.get("type")
+        if type_val == "json_schema" and v is None:
+            raise ValueError("json_schema is required when type is 'json_schema'")
+        if type_val != "json_schema" and v is not None:
+            raise ValueError(
+                "json_schema should only be provided when type is 'json_schema'"
+            )
+        return v
+
+
 class ChatCompletionRequest(BaseModel):
     # Standard OpenAI API fields
     model: str = Field(..., description="ID of the model to use")
@@ -162,6 +216,7 @@ class ChatCompletionRequest(BaseModel):
     n: Optional[int] = Field(1, ge=1, le=10)
     tools: Optional[List[Tool]] = None
     tool_choice: Optional[ToolChoiceType] = None
+    response_format: Optional[ResponseFormat] = None
 
     # Allow any additional fields
     class Config:
@@ -199,5 +254,6 @@ class ChatCompletionRequest(BaseModel):
             "tools",
             "tool_choice",
             "stream_options",
+            "response_format",
         }
         return {k: v for k, v in self.model_dump().items() if k not in standard_fields}
