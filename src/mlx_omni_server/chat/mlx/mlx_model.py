@@ -19,6 +19,7 @@ from ..schema import (
     Role,
 )
 from ..text_models import BaseTextModel, GenerateResult
+from .outlines_logits_processor import OutlinesLogitsProcessor
 from .stop_tokens_checker import StopTokensChecker
 from .tools.chat_tokenizer import ChatTokenizer
 
@@ -108,6 +109,11 @@ class MLXModel(BaseTextModel):
                     request.temperature or self._default_temperature,
                     request.top_p or self._default_top_p,
                 ),
+                logits_processors=[
+                    OutlinesLogitsProcessor(
+                        self._chat_tokenizer.tokenizer, request.response_format
+                    )
+                ],
                 **kwargs,
             ):
                 current_tokens.append(response.token)
