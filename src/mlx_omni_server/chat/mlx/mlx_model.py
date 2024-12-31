@@ -124,6 +124,9 @@ class MLXModel(BaseTextModel):
                 logits_processors=logits_processors,
                 **kwargs,
             ):
+                if response.finish_reason is not None:
+                    break
+
                 current_tokens.append(response.token)
 
                 logprobs = None
@@ -132,7 +135,7 @@ class MLXModel(BaseTextModel):
                         tokenizer, response, request.top_logprobs
                     )
 
-                finish_reason = response.finish_reason or "length"
+                finish_reason = response.finish_reason
                 should_trim = False
                 if request.stop and stop_checker:
                     stop_condition = stop_checker.check_stop_condition(current_tokens)
