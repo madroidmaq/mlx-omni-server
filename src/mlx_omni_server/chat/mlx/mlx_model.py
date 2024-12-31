@@ -198,7 +198,10 @@ class MLXModel(BaseTextModel):
                 raise RuntimeError("No tokens generated")
 
             logger.debug(f"Model Response:\n{completion}")
-            message = self._chat_tokenizer.decode(completion)
+            if request.tools:
+                message = self._chat_tokenizer.decode(completion)
+            else:
+                message = ChatMessage(role=Role.ASSISTANT, content=completion)
 
             return ChatCompletionResponse(
                 id=f"chatcmpl-{uuid.uuid4().hex[:10]}",
