@@ -104,19 +104,23 @@ class MLXModel(BaseTextModel):
 
             current_tokens = []
             last_text = ""
+
+            max_completion_tokens = (
+                request.max_completion_tokens
+                or request.max_tokens
+                or self._default_max_tokens
+            )
+            sampler = make_sampler(
+                request.temperature or self._default_temperature,
+                request.top_p or self._default_top_p,
+            )
+
             for response in stream_generate(
                 model=self._model,
                 tokenizer=tokenizer,
                 prompt=prompt,
-                max_tokens=(
-                    request.max_completion_tokens
-                    or request.max_tokens
-                    or self._default_max_tokens
-                ),
-                sampler=make_sampler(
-                    request.temperature or self._default_temperature,
-                    request.top_p or self._default_top_p,
-                ),
+                max_tokens=max_completion_tokens,
+                sampler=sampler,
                 logits_processors=logits_processors,
                 **kwargs,
             ):
