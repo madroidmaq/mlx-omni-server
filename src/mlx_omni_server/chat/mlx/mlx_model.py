@@ -94,6 +94,14 @@ class MLXModel(BaseTextModel):
                     tokenizer=tokenizer,
                 )
 
+            logits_processors = None
+            if request.response_format and request.response_format.json_schema:
+                logits_processors = [
+                    OutlinesLogitsProcessor(
+                        self._chat_tokenizer.tokenizer, request.response_format
+                    )
+                ]
+
             current_tokens = []
             last_text = ""
             for response in stream_generate(
@@ -109,11 +117,7 @@ class MLXModel(BaseTextModel):
                     request.temperature or self._default_temperature,
                     request.top_p or self._default_top_p,
                 ),
-                logits_processors=[
-                    OutlinesLogitsProcessor(
-                        self._chat_tokenizer.tokenizer, request.response_format
-                    )
-                ],
+                logits_processors=logits_processors,
                 **kwargs,
             ):
                 current_tokens.append(response.token)
