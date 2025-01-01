@@ -1,17 +1,35 @@
-import unittest
+import json
+import logging
 
-from mlx_omni_server.chat.mlx.models import load_model
-from mlx_omni_server.chat.schema import (
-    ChatCompletionRequest,
-    ChatMessage,
-    ResponseFormat,
-    Role,
-)
+import pytest
+from fastapi.testclient import TestClient
+from openai import OpenAI
+
+from mlx_omni_server.main import app
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-class TestStructuredOutput(unittest.TestCase):
+@pytest.fixture
+def client():
+    """Create test client"""
+    return TestClient(app)
 
-    def test_structured_output_with_json_schema(self):
+
+@pytest.fixture
+def openai_client(client):
+    """Create OpenAI client configured with test server"""
+    return OpenAI(
+        base_url="http://test/v1",
+        api_key="test",
+        http_client=client,
+    )
+
+
+class TestStructuredOutput:
+
+    def test_structured_output_with_json_schema(self, openai_client):
         """Test structured generation with a JSON schema."""
         prompt = "List three colors and their hex codes."
         model_name = "mlx-community/Llama-3.2-1B-Instruct-4bit"
@@ -40,21 +58,35 @@ class TestStructuredOutput(unittest.TestCase):
             },
         }
 
-        request = ChatCompletionRequest(
-            model=model_name,
-            messages=[ChatMessage(role=Role.USER, content=prompt)],
-            response_format=ResponseFormat(type="json_schema", json_schema=json_schema),
-        )
+        try:
+            response = openai_client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_schema", "json_schema": json_schema},
+            )
+            logger.info(f"Chat Completion Response:\n{response}\n")
 
-        model = load_model(request.model)
-        response = model.generate(request)
+            # Validate response
+            assert response.choices[0].message is not None, "No message in response"
 
-        print(f"Chat Completion Response:\n{response}\n")
-        print(f"Chat Completion Response Message:\n{response.choices[0].message}\n")
+            # Get generated content
+            generated_content = response.choices[0].message.content
+            logger.info(f"Generated content: {generated_content}")
 
-        # Basic validation that the output looks like JSON
-        self.assertTrue(response.choices[0].message.content.strip().startswith("{"))
-        self.assertTrue(response.choices[0].message.content.strip().endswith("}"))
-        self.assertIn("colors", response.choices[0].message.content)
-        self.assertIn("name", response.choices[0].message.content)
-        self.assertIn("hex", response.choices[0].message.content)
+            # Validate JSON format
+            try:
+                generated_json = json.loads(generated_content)
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON content: {e}")
+                raise
+
+            # Validate JSON structure
+            assert "colors" in generated_json, "Missing colors field in JSON"
+            assert isinstance(
+                generated_json["colors"], list
+            ), "Colors field is not an array"
+            logger.info("Test passed: Generated JSON matches expected format")
+
+        except Exception as e:
+            logger.error(f"Test error: {str(e)}")
+            raise
