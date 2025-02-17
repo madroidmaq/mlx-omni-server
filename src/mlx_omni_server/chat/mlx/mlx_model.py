@@ -27,25 +27,25 @@ from .tools.chat_tokenizer import ChatTokenizer
 class MLXModel(BaseTextModel):
     """MLX Chat Model wrapper with internal parameter management"""
 
-    def __init__(self, model_id: str, model, tokenizer: ChatTokenizer):
-        self._model_id = model_id
+    def __init__(self, model, tokenizer: ChatTokenizer, draft_model=None):
         self._model = model
+        self._draft_model = draft_model
         self._default_max_tokens = 2048
         self._default_temperature = 1.0
         self._default_top_p = 1.0
         self._default_top_k = -1
         self._chat_tokenizer = tokenizer
-        logger.info(f"Initialized MLXModel with model_id: {model_id}")
 
     def _get_generation_params(self, request: ChatCompletionRequest) -> Dict[str, Any]:
         params = request.get_extra_params()
-        known_params = {
+        known_extra_params = {
             "top_k",
             "min_tokens_to_keep",
             "min_p",
             "adapter_path",
+            "draft_model",
         }
-        return {k: v for k, v in params.items() if k not in known_params}
+        return {k: v for k, v in params.items() if k not in known_extra_params}
 
     def _process_logprobs(
         self,
@@ -135,6 +135,7 @@ class MLXModel(BaseTextModel):
                 model=self._model,
                 tokenizer=tokenizer,
                 prompt=prompt,
+                draft_model=self._draft_model,
                 max_tokens=max_completion_tokens,
                 sampler=sampler,
                 logits_processors=logits_processors,
