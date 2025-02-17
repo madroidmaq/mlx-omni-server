@@ -269,5 +269,6 @@ class ChatCompletionRequest(BaseModel):
             "metadata",
             "modalities",
             "store",
+            "draft-model",
         }
         return {k: v for k, v in self.model_dump().items() if k not in standard_fields}

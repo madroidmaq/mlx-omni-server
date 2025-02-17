@@ -1,5 +1,5 @@
 import json
-from typing import Generator
+from typing import Generator, Optional
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -17,7 +17,9 @@ async def create_chat_completion(request: ChatCompletionRequest):
     """Create a chat completion"""
 
     text_model = _create_text_model(
-        request.model, request.get_extra_params().get("adapter_path")
+        request.model,
+        request.get_extra_params().get("adapter_path"),
+        request.get_extra_params().get("draft_model"),
     )
 
     if not request.stream:
@@ -40,16 +42,29 @@ async def create_chat_completion(request: ChatCompletionRequest):
     )
 
 
-_last_model_id = None
+_last_model_key = None
 _last_text_model = None
 
 
-def _create_text_model(model_id: str, adapter_path: str = None) -> BaseTextModel:
-    global _last_model_id, _last_text_model
-    if model_id == _last_model_id:
+def _create_text_model(
+    model_id: str,
+    adapter_path: Optional[str] = None,
+    draft_model: Optional[str] = None,
+) -> BaseTextModel | None:
+    global _last_model_key, _last_text_model
+
+    current_key = (model_id, adapter_path, draft_model)
+
+    if current_key == _last_model_key:
         return _last_text_model
 
-    model = load_model(model_id, adapter_path)
+    model = load_model(
+        model_id=model_id,
+        adapter_path=adapter_path,
+        draft_model_id=draft_model,
+    )
+
+    # Update cache
     _last_text_model = model
-    _last_model_id = model_id
+    _last_model_key = current_key
     return model

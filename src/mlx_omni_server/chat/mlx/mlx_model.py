@@ -30,9 +30,16 @@ from .tools.reasoning_decoder import ReasoningDecoder
 class MLXModel(BaseTextModel):
     """MLX Chat Model wrapper with internal parameter management"""
 
-    def __init__(self, model_id: str, model: nn.Module, tokenizer: ChatTokenizer):
+    def __init__(
+        self,
+        model_id: str,
+        model: nn.Module,
+        tokenizer: ChatTokenizer,
+        draft_model=None,
+    ):
         self._model_id = model_id
         self._model: nn.Module = model
+        self._draft_model = draft_model
         self._default_max_tokens = 2048
         self._default_temperature = 1.0
         self._default_top_p = 1.0
@@ -60,6 +67,7 @@ class MLXModel(BaseTextModel):
         # Knowned params using in model config
         model_params = {
             "adapter_path",
+            "draft_model",
             # Additional config for `apply_chat_template`
             "chat_template_config",
         }
@@ -265,6 +273,7 @@ class MLXModel(BaseTextModel):
                 model=self._model,
                 tokenizer=tokenizer,
                 prompt=processed_prompt,
+                draft_model=self._draft_model,
                 **generate_kwargs,
             ):
                 if response.finish_reason is not None:
