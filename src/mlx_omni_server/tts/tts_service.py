@@ -60,7 +60,6 @@ class TTSService:
         try:
             # Determine which model to use based on the model name
             if request.model.startswith("mlx-community/"):
-                print("Using Kokoro model")
                 self.mlx_model.generate_audio(
                     request=request, output_path=self.sample_audio_path
                 )

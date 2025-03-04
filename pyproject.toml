@@ -32,7 +32,7 @@ outlines = "^0.1.11"
 aiohttp = "^3.11.11"
 mlx-audio = "^0.0.1"
 librosa = "^0.10.2.post1"
-misaki = { extras = ["en"], version = "^0.8.2" }
+phonemizer-fork = "^3.3.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"
