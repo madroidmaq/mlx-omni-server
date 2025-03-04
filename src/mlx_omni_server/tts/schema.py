@@ -17,8 +17,11 @@ class TTSRequest(BaseModel):
     model: str = Field(..., description="TTS model to use")
     input: str = Field(..., max_length=4096)
     voice: str = Field(
-        ..., description="Voice to use (e.g. alloy, echo, fable, onyx, nova, shimmer)"
+        default="af_heart", description="Voice to use (e.g. alloy, echo, fable, onyx, nova, shimmer, Kokoro voices)"
     )
+    lang_code: str = Field(
+        default="a", description="The language code for Kokoro model")
+
     response_format: Optional[AudioFormat] = Field(default=AudioFormat.WAV)
     speed: Optional[float] = Field(default=1.0)
 
@@ -28,7 +31,8 @@ class TTSRequest(BaseModel):
 
     def get_extra_params(self) -> Dict[str, Any]:
         """Get all extra parameters that aren't part of the standard OpenAI API."""
-        standard_fields = {"model", "input", "voice", "response_format", "speed"}
+        standard_fields = {"model", "input",
+                           "voice", "response_format", "speed", "lang_code"}
         return {k: v for k, v in self.model_dump().items() if k not in standard_fields}
 
     @field_validator("speed")
@@ -39,7 +43,14 @@ class TTSRequest(BaseModel):
 
     @field_validator("model")
     def validate_model(cls, v):
-        valid_models = ["lucasnewman/f5-tts-mlx"]
-        if v not in valid_models:
-            raise ValueError(f'Model must be one of: {", ".join(valid_models)}')
+        valid_models = [
+            "lucasnewman/f5-tts-mlx",
+            "mlx-community/Kokoro-82M-bf16",
+            "mlx-community/Kokoro-82M-4bit",
+            "mlx-community/Kokoro-82M-6bit",
+            "mlx-community/Kokoro-82M-8bit"
+        ]
+        if not any(v.startswith(model) for model in valid_models):
+            raise ValueError(
+                f'Model must be one of: {", ".join(valid_models)}')
         return v
