@@ -16,7 +16,7 @@ classifiers = [
 packages = [{ include = "mlx_omni_server", from = "src" }]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.11,<3.12"
 fastapi = "^0.115.4"
 python-multipart = "^0.0.20"
 pydantic = "^2.9.2"
@@ -30,6 +30,9 @@ diffusionkit = "^0.5.1"
 sse-starlette = "^2.1.3"
 outlines = "^0.1.11"
 aiohttp = "^3.11.11"
+mlx-audio = "^0.0.1"
+librosa = "^0.10.2.post1"
+phonemizer-fork = "^3.3.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"

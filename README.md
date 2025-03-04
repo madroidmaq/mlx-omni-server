@@ -107,6 +107,10 @@ response = client.audio.speech.create(
     model="lucasnewman/f5-tts-mlx",
     input="Hello, welcome to MLX Omni Server!"
 )
+response = client.audio.speech.create(
+    model="mlx-community/Kokoro-82M-bf16",
+    input="Hello, welcome to MLX Omni Server!"
+)
 
 # Speech-to-Text Example
 audio_file = open("speech.mp3", "rb")
