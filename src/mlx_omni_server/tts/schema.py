@@ -51,6 +51,6 @@ class TTSRequest(BaseModel):
             "mlx-community/Kokoro-82M-8bit"
         ]
         if not any(v.startswith(model) for model in valid_models):
-            raise ValueError(f'Model must be one of: {
-                             ", ".join(valid_models)}')
+            raise ValueError(
+                f'Model must be one of: {", ".join(valid_models)}')
         return v
