@@ -21,7 +21,7 @@ class F5Model:
         )
 
 
-class MLXModel:
+class KokoroModel:
     def __init__(self):
         self.models = {}
 
@@ -30,7 +30,7 @@ class MLXModel:
         if request.model not in self.models:
             model = load_model(request.model)
             self.models[request.model] = KokoroPipeline(
-                lang_code='a',  # This should come from request params
+                lang_code=request.lang_code,  # This should come from request params
                 model=model,
                 repo_id=request.model
             )
@@ -40,7 +40,7 @@ class MLXModel:
         # Generate audio using pipeline
         for _, _, audio in pipeline(
             request.input,
-            voice=request.get_extra_params().get('voice', 'af_heart'),
+            voice=request.get_extra_params().get('voice', request.voice),
             speed=request.speed
         ):
             # Save the generated audio
@@ -50,7 +50,7 @@ class MLXModel:
 class TTSService:
     def __init__(self):
         self.f5_model = F5Model()
-        self.mlx_model = MLXModel()
+        self.mlx_model = KokoroModel()
         self.sample_audio_path = Path("sample.wav")
 
     async def generate_speech(
