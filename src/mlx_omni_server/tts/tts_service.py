@@ -1,7 +1,8 @@
 from pathlib import Path
-
+import soundfile as sf
+from mlx_audio.tts.models.kokoro import KokoroPipeline
+from mlx_audio.tts.utils import load_model
 from f5_tts_mlx.generate import generate
-
 from .schema import TTSRequest
 
 
@@ -20,11 +21,36 @@ class F5Model:
         )
 
 
-class TTSService:
-    model: F5Model
-
+class MLXModel:
     def __init__(self):
-        self.model = F5Model()
+        self.models = {}
+
+    def generate_audio(self, request: TTSRequest, output_path):
+        # Load model if not already loaded
+        if request.model not in self.models:
+            model = load_model(request.model)
+            self.models[request.model] = KokoroPipeline(
+                lang_code='a',  # This should come from request params
+                model=model,
+                repo_id=request.model
+            )
+
+        pipeline = self.models[request.model]
+
+        # Generate audio using pipeline
+        for _, _, audio in pipeline(
+            request.input,
+            voice=request.get_extra_params().get('voice', 'af_heart'),
+            speed=request.speed
+        ):
+            # Save the generated audio
+            sf.write(output_path, audio[0], 24000)
+
+
+class TTSService:
+    def __init__(self):
+        self.f5_model = F5Model()
+        self.mlx_model = MLXModel()
         self.sample_audio_path = Path("sample.wav")
 
     async def generate_speech(
@@ -32,9 +58,16 @@ class TTSService:
         request: TTSRequest,
     ) -> bytes:
         try:
-            self.model.generate_audio(
-                request=request, output_path=self.sample_audio_path
-            )
+            # Determine which model to use based on the model name
+            if request.model.startswith("mlx-community/"):
+                self.mlx_model.generate_audio(
+                    request=request, output_path=self.sample_audio_path
+                )
+            else:
+                self.f5_model.generate_audio(
+                    request=request, output_path=self.sample_audio_path
+                )
+
             with open(self.sample_audio_path, "rb") as audio_file:
                 audio_content = audio_file.read()
             self.sample_audio_path.unlink(missing_ok=True)
