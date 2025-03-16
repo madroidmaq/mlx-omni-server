@@ -203,7 +203,7 @@ class MLXModel(BaseTextModel):
                     break
 
             logger.debug(
-                f"在 _stream_generate 方法中完成生成，缓存共 {len(self._prompt_cache.tokens)} 个令牌"
+                f"The generation is completed, with a total of {len(self._prompt_cache.tokens)} tokens cached."
             )
 
             logger.debug(response)
@@ -257,7 +257,7 @@ class MLXModel(BaseTextModel):
             tokenized_prompt = self._chat_tokenizer.tokenizer.encode(prompt)
             update_prompt_cache(self._prompt_cache, tokenized_prompt, self._model_id)
             logger.debug(
-                f"在 generate 方法中更新缓存，共 {len(self._prompt_cache.tokens)} 个令牌"
+                f"Update the prompt cache, totaling {len(self._prompt_cache.tokens)} tokens."
             )
 
             # 使用在 _stream_generate 中记录的缓存令牌数量
