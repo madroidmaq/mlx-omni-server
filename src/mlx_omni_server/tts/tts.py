@@ -18,7 +18,7 @@ async def create_speech(request: TTSRequest):
     Returns:
         StreamingResponse: Audio file content in the requested format
     """
-    tts_service = TTSService()
+    tts_service = TTSService(request.model)
 
     try:
         audio_content = await tts_service.generate_speech(
