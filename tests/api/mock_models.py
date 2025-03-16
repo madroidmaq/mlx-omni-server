@@ -139,7 +139,7 @@ class MockTokenizer(PreTrainedTokenizer):
         conversation: List[Dict[str, str]],
         tokenize: bool = True,
         add_generation_prompt: bool = True,
-        **kwargs
+        **kwargs,
     ) -> Union[str, List[int]]:
         """Mock chat template application"""
         if tokenize:

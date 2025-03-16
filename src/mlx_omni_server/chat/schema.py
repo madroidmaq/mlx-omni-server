@@ -94,10 +94,17 @@ class ChatCompletionUsageDetails(BaseModel):
     rejected_prediction_tokens: int = 0
 
 
+class PromptTokensDetails(BaseModel):
+    """包含提示令牌的详细信息"""
+
+    cached_tokens: int = 0
+
+
 class ChatCompletionUsage(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
+    prompt_tokens_details: Optional[PromptTokensDetails] = None
 
 
 class ChatCompletionChoice(BaseModel):

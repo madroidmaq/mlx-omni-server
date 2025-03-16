@@ -1,8 +1,9 @@
 import time
 import uuid
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Dict, Generator, List, Optional
 
 import mlx.core as mx
+import mlx.nn as nn
 from mlx_lm.sample_utils import make_logits_processors, make_sampler
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 from mlx_lm.utils import GenerationResponse, stream_generate
@@ -20,6 +21,7 @@ from ..schema import (
 )
 from ..text_models import BaseTextModel, GenerateResult
 from .outlines_logits_processor import OutlinesLogitsProcessor
+from .prompt_cache import PromptCache, process_prompt_cache, update_prompt_cache
 from .stop_tokens_checker import StopTokensChecker
 from .tools.chat_tokenizer import ChatTokenizer
 
@@ -27,14 +29,18 @@ from .tools.chat_tokenizer import ChatTokenizer
 class MLXModel(BaseTextModel):
     """MLX Chat Model wrapper with internal parameter management"""
 
-    def __init__(self, model_id: str, model, tokenizer: ChatTokenizer):
+    def __init__(self, model_id: str, model: nn.Module, tokenizer: ChatTokenizer):
         self._model_id = model_id
-        self._model = model
+        self._model: nn.Module = model
         self._default_max_tokens = 2048
         self._default_temperature = 1.0
         self._default_top_p = 1.0
         self._default_top_k = -1
         self._chat_tokenizer = tokenizer
+        self._prompt_cache = PromptCache()
+        self._cached_token_count = (
+            0  # Track the number of cached tokens used in the current request
+        )
         logger.info(f"Initialized MLXModel with model_id: {model_id}")
 
     def _get_generation_params(self, request: ChatCompletionRequest) -> Dict[str, Any]:
@@ -46,6 +52,14 @@ class MLXModel(BaseTextModel):
             "adapter_path",
         }
         return {k: v for k, v in params.items() if k not in known_params}
+
+    def _get_prompt_cache(self, prompt: List[int]) -> List[int]:
+        processed_prompt, cached_token_count = process_prompt_cache(
+            prompt, self._prompt_cache, self._model_id, self._model
+        )
+
+        self._cached_token_count = cached_token_count
+        return processed_prompt
 
     def _process_logprobs(
         self,
@@ -131,13 +145,21 @@ class MLXModel(BaseTextModel):
                 top_k=params.get("top_k", self._default_top_k),
             )
 
+            # 处理提示缓存
+            tokenized_prompt = tokenizer.encode(prompt)
+            processed_prompt = self._get_prompt_cache(tokenized_prompt)
+            logger.debug(
+                f"Using {self._cached_token_count} cached tokens out of {len(tokenized_prompt)} total tokens"
+            )
+
             for response in stream_generate(
                 model=self._model,
                 tokenizer=tokenizer,
-                prompt=prompt,
+                prompt=processed_prompt,
                 max_tokens=max_completion_tokens,
                 sampler=sampler,
                 logits_processors=logits_processors,
+                prompt_cache=self._prompt_cache.cache,
                 **params,
             ):
                 if response.finish_reason is not None:
@@ -180,6 +202,11 @@ class MLXModel(BaseTextModel):
                 if should_trim:
                     break
 
+            logger.debug(
+                f"在 _stream_generate 方法中完成生成，缓存共 {len(self._prompt_cache.tokens)} 个令牌"
+            )
+
+            logger.debug(response)
         except Exception as e:
             logger.error(f"Error during stream generation: {str(e)}", exc_info=True)
             raise
@@ -227,6 +254,23 @@ class MLXModel(BaseTextModel):
             else:
                 message = ChatMessage(role=Role.ASSISTANT, content=completion)
 
+            tokenized_prompt = self._chat_tokenizer.tokenizer.encode(prompt)
+            update_prompt_cache(self._prompt_cache, tokenized_prompt, self._model_id)
+            logger.debug(
+                f"在 generate 方法中更新缓存，共 {len(self._prompt_cache.tokens)} 个令牌"
+            )
+
+            # 使用在 _stream_generate 中记录的缓存令牌数量
+            cached_tokens = self._cached_token_count
+            logger.debug(f"Generate response with {cached_tokens} cached tokens")
+
+            # 创建 prompt_tokens_details
+            prompt_tokens_details = None
+            if cached_tokens > 0:
+                from ..schema import PromptTokensDetails
+
+                prompt_tokens_details = PromptTokensDetails(cached_tokens=cached_tokens)
+
             return ChatCompletionResponse(
                 id=f"chatcmpl-{uuid.uuid4().hex[:10]}",
                 created=int(time.time()),
@@ -246,9 +290,12 @@ class MLXModel(BaseTextModel):
                     )
                 ],
                 usage=ChatCompletionUsage(
-                    prompt_tokens=result.prompt_tokens,
+                    prompt_tokens=result.prompt_tokens + cached_tokens,
                     completion_tokens=result.generation_tokens,
-                    total_tokens=result.prompt_tokens + result.generation_tokens,
+                    total_tokens=result.prompt_tokens
+                    + result.generation_tokens
+                    + cached_tokens,
+                    prompt_tokens_details=prompt_tokens_details,
                 ),
             )
         except Exception as e:
@@ -291,6 +338,17 @@ class MLXModel(BaseTextModel):
 
             if request.stream_options and request.stream_options.include_usage:
                 created = int(time.time())
+                cached_tokens = self._cached_token_count
+                logger.debug(f"Stream response with {cached_tokens} cached tokens")
+
+                prompt_tokens_details = None
+                if cached_tokens > 0:
+                    from ..schema import PromptTokensDetails
+
+                    prompt_tokens_details = PromptTokensDetails(
+                        cached_tokens=cached_tokens
+                    )
+
                 yield ChatCompletionChunk(
                     id=chat_id,
                     created=created,
@@ -304,9 +362,12 @@ class MLXModel(BaseTextModel):
                         )
                     ],
                     usage=ChatCompletionUsage(
-                        prompt_tokens=result.prompt_tokens,
+                        prompt_tokens=result.prompt_tokens + cached_tokens,
                         completion_tokens=result.generation_tokens,
-                        total_tokens=result.prompt_tokens + result.generation_tokens,
+                        total_tokens=result.prompt_tokens
+                        + result.generation_tokens
+                        + cached_tokens,
+                        prompt_tokens_details=prompt_tokens_details,
                     ),
                 )
 
