@@ -36,6 +36,7 @@ dependencies = [
     "sse-starlette>=2.1.3,<3",
     "outlines>=0.1.11,<0.2",
     "aiohttp>=3.11.11,<4",
+    "rich>=13.9.4",
 ]
 
 [project.urls]

@@ -1,16 +1,11 @@
 import logging
 import os
+from datetime import datetime
+from typing import Optional
 
-# ANSI escape codes for colors
-COLORS = {
-    "verbose": "\x1b[38;5;244m",  # Grey
-    "debug": "\x1b[38;5;33m",  # Blue (#2196F3)
-    "info": "\x1b[38;5;77m",  # Green
-    "warning": "\x1b[38;5;220m",  # Yellow
-    "error": "\x1b[38;5;196m",  # Red
-    "critical": "\x1b[38;5;199m",  # Purple
-    "reset": "\x1b[0m",
-}
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.text import Text
 
 # Create logs directory
 log_dir = "logs"
@@ -18,53 +13,56 @@ if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 
 
-class ColorFormatter(logging.Formatter):
-    """Custom color formatter for logging"""
-
-    format_str = "%(levelname)s: %(message)s"
-
-    FORMATS = {
-        logging.DEBUG: COLORS["debug"] + format_str + COLORS["reset"],
-        logging.INFO: COLORS["info"] + format_str + COLORS["reset"],
-        logging.WARNING: COLORS["warning"] + format_str + COLORS["reset"],
-        logging.ERROR: COLORS["error"] + format_str + COLORS["reset"],
-        logging.CRITICAL: COLORS["critical"] + format_str + COLORS["reset"],
-    }
-
-    def format(self, record):
-        log_fmt = self.FORMATS.get(record.levelno)
-        formatter = logging.Formatter(log_fmt)
-        return formatter.format(record)
-
-
-def get_logger(name: str = "mlx_omni") -> logging.Logger:
-    """Get project logger
+def get_logger(name: Optional[str] = None) -> logging.Logger:
+    """Get project logger with optimized Rich configuration
 
     Args:
-        name: Module name, typically pass in __name__
+        name: Optional module name for the logger
 
     Returns:
-        logging.Logger: Configured logger instance
+        logging.Logger: Configured logger instance with Rich handler
     """
-    # Create logger
-    _logger = logging.getLogger(name)  # Use module name directly as logger name
+    # Create console with no file/line highlighting
+    console = Console(highlight=False)
 
-    # Set log level
-    _logger.setLevel(os.environ.get("MLX_OMNI_LOG_LEVEL", "INFO").upper())
+    # Custom time formatter that only shows time (no date)
+    def time_formatter():
+        return Text(
+            datetime.now().strftime("%H:%M:%S"), style="bold"
+        )  # Only show hours:minutes:seconds
 
-    # If logger already has handlers, it's already configured
-    if _logger.handlers:
-        return _logger
+    # Configure Rich handler with custom settings
+    rich_handler = RichHandler(
+        console=console,
+        show_time=False,  # Disable default time display
+        show_level=True,
+        show_path=False,  # Hide file path
+        enable_link_path=False,  # Disable clickable links
+        markup=True,
+        rich_tracebacks=True,
+        tracebacks_extra_lines=2,
+        tracebacks_show_locals=True,
+    )
 
-    # Add console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(ColorFormatter())
-    _logger.addHandler(console_handler)
+    # Set custom time display function
+    rich_handler.get_time = time_formatter
 
-    # Disable log propagation to parent logger
-    _logger.propagate = False
+    # Set log format to only include the message
+    # Rich handler will add timestamps and log levels automatically
+    FORMAT = "%(message)s"
 
-    return _logger
+    # Configure the root logger
+    logging.basicConfig(
+        level="NOTSET",
+        format=FORMAT,
+        handlers=[rich_handler],
+    )
+
+    # Get the named logger or use 'mlx_omni' as default
+    logger_name = name if name else "mlx_omni"
+    log = logging.getLogger(logger_name)
+
+    return log
 
 
 # Default logger
