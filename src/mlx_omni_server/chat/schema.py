@@ -83,6 +83,7 @@ class ChatMessage(BaseModel):
     name: Optional[str] = None
     tool_calls: Optional[List[ToolCall]] = None
     tool_call_id: Optional[str] = None
+    reasoning: Optional[str] = None  # For model reasoning/thinking output
 
     class Config:
         json_encoders = {bytes: lambda v: v.decode()}
