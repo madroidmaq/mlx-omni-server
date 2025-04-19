@@ -38,6 +38,7 @@ dependencies = [
     "aiohttp>=3.11.11,<4",
     "rich>=13.9.4",
     "openai==1.66.3",
+    "mlx-embeddings==0.0.3"
 ]
 
 [project.urls]
