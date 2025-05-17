@@ -42,6 +42,9 @@ class ChatTokenizer(ABC):
                     for item in msg_dict["content"]
                     if item.get("type") == "text"
                 )
+            # Ensure content is always a string to prevent Jinja2 template errors
+            if "content" not in msg_dict or msg_dict.get("content") is None:
+                msg_dict["content"] = ""
             conversation.append(msg_dict)
 
         if should_prefill:
