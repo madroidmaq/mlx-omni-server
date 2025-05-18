@@ -19,7 +19,7 @@ from ..schema import (
     ChatMessage,
     Role,
 )
-from ..text_models import BaseTextModel, GenerateResult
+from ..text_models import BaseTextModel, GenerateResult, GenerationParams
 from .outlines_logits_processor import OutlinesLogitsProcessor
 from .prompt_cache import PromptCache, process_prompt_cache, update_prompt_cache
 from .stop_tokens_checker import StopTokensChecker
@@ -43,15 +43,62 @@ class MLXModel(BaseTextModel):
         )
         logger.info(f"Initialized MLXModel with model_id: {model_id}")
 
-    def _get_generation_params(self, request: ChatCompletionRequest) -> Dict[str, Any]:
+    def _get_generation_params(
+        self, request: ChatCompletionRequest
+    ) -> GenerationParams:
         params = request.get_extra_params()
-        known_params = {
+
+        # All params declare in `make_sampler`
+        sampler_params = {
             "top_k",
             "min_tokens_to_keep",
             "min_p",
-            "adapter_path",
+            "xtc_probability",
+            "xtc_threshold",
+            "xtc_special_tokens",
         }
-        return {k: v for k, v in params.items() if k not in known_params}
+        # Knowned params using in model config
+        model_params = {
+            "adapter_path",
+            # Additional config for `apply_chat_template`
+            "chat_template_config",
+        }
+        # Quick template params, same param will be overrided by `chat_template_config`
+        template_params = {
+            # Qwen3
+            "enable_thinking",
+            "thinking_budget",
+            # Claude
+            "thinking",
+            # Gemini
+            "thinkingConfig",
+            # Grok
+            "reasoning_effort",
+            # Others
+            "reasoning",
+        }
+
+        sampler_kwargs = {}
+        model_kwargs = {}
+        generate_kwargs = {}
+        template_kwargs = {}
+
+        for key, value in params.items():
+            if key in sampler_params:
+                sampler_kwargs[key] = value
+            elif key in model_params:
+                model_kwargs[key] = value
+            elif key in template_params:
+                template_kwargs[key] = value
+            else:
+                generate_kwargs[key] = value
+
+        return {
+            "sampler_kwargs": sampler_kwargs,
+            "model_kwargs": model_kwargs,
+            "generate_kwargs": generate_kwargs,
+            "template_kwargs": template_kwargs,
+        }
 
     def _get_prompt_cache(self, prompt: List[int]) -> List[int]:
         processed_prompt, cached_token_count = process_prompt_cache(
@@ -104,9 +151,20 @@ class MLXModel(BaseTextModel):
         self,
         prompt: str,
         request: ChatCompletionRequest,
+        params: GenerationParams,
     ) -> Generator[GenerationResponse, None, None]:
         try:
-            params = self._get_generation_params(request)
+            sampler_kwargs = {
+                "temp": request.temperature or self._default_temperature,
+                "top_p": request.top_p or self._default_top_p,
+                "min_p": 0.0,
+                "min_tokens_to_keep": 1,
+                "top_k": self._default_top_k,
+            } | params.get("sampler_kwargs", {})
+            generate_kwargs = params.get("generate_kwargs", {})
+
+            logger.debug(f"Sampler kwargs: {sampler_kwargs}")
+            logger.debug(f"Generation kwargs: {generate_kwargs}")
 
             tokenizer = self._chat_tokenizer.tokenizer
             stop_checker = None
@@ -137,13 +195,7 @@ class MLXModel(BaseTextModel):
                 or request.max_tokens
                 or self._default_max_tokens
             )
-            sampler = make_sampler(
-                temp=request.temperature or self._default_temperature,
-                top_p=request.top_p or self._default_top_p,
-                min_p=params.get("min_p", 0.0),
-                min_tokens_to_keep=params.get("min_tokens_to_keep", 1),
-                top_k=params.get("top_k", self._default_top_k),
-            )
+            sampler = make_sampler(**sampler_kwargs)
 
             # 处理提示缓存
             tokenized_prompt = tokenizer.encode(prompt)
@@ -160,7 +212,7 @@ class MLXModel(BaseTextModel):
                 sampler=sampler,
                 logits_processors=logits_processors,
                 prompt_cache=self._prompt_cache.cache,
-                **params,
+                **generate_kwargs,
             ):
                 if response.finish_reason is not None:
                     break
@@ -222,16 +274,27 @@ class MLXModel(BaseTextModel):
             finish_reason = "stop"
             result = None
 
+            params = self._get_generation_params(request)
+            model_kwargs = params.get("model_kwargs", {})
+            template_kwargs = params.get("template_kwargs", {}) | model_kwargs.get(
+                "chat_template_config", {}
+            )
+
+            logger.debug(f"Model kwargs: {model_kwargs}")
+            logger.debug(f"Chat Template kwargs: {template_kwargs}")
+
             prompt = self._chat_tokenizer.encode(
                 messages=request.messages,
                 tools=request.tools,
                 tool_choice=request.tool_choice if request.tool_choice else None,
+                **template_kwargs,
             )
             logger.debug(f"Encoded prompt:\n{prompt}")
 
             for result in self._stream_generate(
                 prompt=prompt,
                 request=request,
+                params=params,
             ):
                 current_tokens.append(result.token)
                 completion = self._chat_tokenizer.tokenizer.decode(current_tokens)
@@ -309,9 +372,19 @@ class MLXModel(BaseTextModel):
         try:
             chat_id = f"chatcmpl-{uuid.uuid4().hex[:10]}"
 
+            params = self._get_generation_params(request)
+            model_kwargs = params.get("model_kwargs", {})
+            template_kwargs = params.get("template_kwargs") | model_kwargs.get(
+                "chat_template_config", {}
+            )
+
+            logger.debug(f"Model kwargs: {model_kwargs}")
+            logger.debug(f"Chat Template kwargs: {template_kwargs}")
+
             prompt = self._chat_tokenizer.encode(
                 messages=request.messages,
                 tools=request.tools,
+                **template_kwargs,
             )
             logger.debug(f"Encoded prompt:\n{prompt}")
 
@@ -319,6 +392,7 @@ class MLXModel(BaseTextModel):
             for result in self._stream_generate(
                 prompt=prompt,
                 request=request,
+                params=params,
             ):
                 created = int(time.time())
                 completion += result.text

@@ -1,8 +1,15 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Dict, Generator, Optional, TypedDict
 
 from .schema import ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse
+
+
+class GenerationParams(TypedDict):
+    sampler_kwargs: Dict[str, Any]
+    model_kwargs: Dict[str, Any]
+    generate_kwargs: Dict[str, Any]
+    template_kwargs: Dict[str, Any]
 
 
 @dataclass
