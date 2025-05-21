@@ -23,23 +23,27 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
 ]
 dependencies = [
+    # core
     "fastapi>=0.115.4,<0.116",
-    "python-multipart>=0.0.20,<0.0.21",
     "pydantic>=2.9.2,<3",
-    "f5-tts-mlx>=0.2.5,<0.3",
     "uvicorn>=0.34.0,<0.35",
-    "numba>=0.57.0",
-    "mlx-whisper>=0.4.1,<0.5",
+    "rich>=13.9.4",
+    # chat
     "mlx-lm>=0.24,<0.25",
-    "huggingface-hub>=0.30",
-    "mflux>=0.7.1,<0.8",
+    "python-multipart>=0.0.20,<0.0.21",
     "sse-starlette>=2.1.3,<3",
     "outlines>=0.1.11,<0.2",
-    "aiohttp>=3.11.11,<4",
-    "rich>=13.9.4",
-    "openai>=1.78.0",
+    # models
+    "huggingface-hub>=0.30",
+    # audio
+    "f5-tts-mlx>=0.2.5,<0.3",
+    "mlx-whisper>=0.4.1,<0.5",
+    "mlx-audio>=0.2.2",
+    "numba>=0.57.0",
+    # images
+    "mflux>=0.7.1,<0.8",
+    # embeddings
     "mlx-embeddings>=0.0.3",
-    "mlx-audio>=0.2.2"
 ]
 
 [project.urls]
@@ -55,7 +59,10 @@ dev = [
     "pre-commit>=4.0.1,<5",
     "black>=24.10.0,<25",
     "isort>=5.13.2,<6",
-    "weave>=0.51.46,<6",
+    "weave>=0.51.46,<0.60",
+    "openai>=1.78.0",
+    # for en_core_web_sm models
+    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
 ]
 
 [tool.hatch.build.targets.sdist]

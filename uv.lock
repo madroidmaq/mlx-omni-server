@@ -885,6 +885,14 @@ wheels = [
 ]
 
 [[package]]
+name = "en-core-web-sm"
+version = "3.8.0"
+source = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
+wheels = [
+    { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl", hash = "sha256:1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85" },
+]
+
+[[package]]
 name = "espeakng-loader"
 version = "0.2.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1993,10 +2001,9 @@ wheels = [
 
 [[package]]
 name = "mlx-omni-server"
-version = "0.4.1"
+version = "0.4.2"
 source = { editable = "." }
 dependencies = [
-    { name = "aiohttp" },
     { name = "f5-tts-mlx" },
     { name = "fastapi" },
     { name = "huggingface-hub" },
@@ -2006,7 +2013,6 @@ dependencies = [
     { name = "mlx-lm" },
     { name = "mlx-whisper" },
     { name = "numba" },
-    { name = "openai" },
     { name = "outlines" },
     { name = "pydantic" },
     { name = "python-multipart" },
@@ -2018,8 +2024,10 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "black" },
+    { name = "en-core-web-sm" },
     { name = "httpx" },
     { name = "isort" },
+    { name = "openai" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "weave" },
@@ -2027,7 +2035,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = ">=3.11.11,<4" },
     { name = "f5-tts-mlx", specifier = ">=0.2.5,<0.3" },
     { name = "fastapi", specifier = ">=0.115.4,<0.116" },
     { name = "huggingface-hub", specifier = ">=0.30" },
@@ -2037,7 +2044,6 @@ requires-dist = [
     { name = "mlx-lm", specifier = ">=0.24,<0.25" },
     { name = "mlx-whisper", specifier = ">=0.4.1,<0.5" },
     { name = "numba", specifier = ">=0.57.0" },
-    { name = "openai", specifier = ">=1.78.0" },
     { name = "outlines", specifier = ">=0.1.11,<0.2" },
     { name = "pydantic", specifier = ">=2.9.2,<3" },
     { name = "python-multipart", specifier = ">=0.0.20,<0.0.21" },
@@ -2049,11 +2055,13 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "black", specifier = ">=24.10.0,<25" },
+    { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
     { name = "httpx", specifier = ">=0.27.2,<0.28" },
     { name = "isort", specifier = ">=5.13.2,<6" },
+    { name = "openai", specifier = ">=1.78.0" },
     { name = "pre-commit", specifier = ">=4.0.1,<5" },
     { name = "pytest", specifier = ">=8.3.3,<9" },
-    { name = "weave", specifier = ">=0.51.46,<6" },
+    { name = "weave", specifier = ">=0.51.46,<0.60" },
 ]
 
 [[package]]
