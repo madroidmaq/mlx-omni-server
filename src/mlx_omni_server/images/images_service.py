@@ -1,20 +1,20 @@
 import base64
 import os
 import random
-from re import S
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from re import S
+from typing import Any, Dict, List, Optional, Tuple
 
-from PIL import Image
 from mflux import Config, Flux1, ModelConfig, StopImageGenerationException
 from mflux.callbacks.callback_registry import CallbackRegistry
 from mflux.callbacks.instances.memory_saver import MemorySaver
 from mflux.callbacks.instances.stepwise_handler import StepwiseHandler
+from PIL import Image
 
-from .schema import ImageGenerationRequest, ImageObject, ResponseFormat, ImageSize
 from ..utils.logger import logger
+from .schema import ImageGenerationRequest, ImageObject, ImageSize, ResponseFormat
 
 
 class MFluxImageGenerator:
@@ -28,25 +28,23 @@ class MFluxImageGenerator:
 
     def _extra_base_model(self, model_name: str):
         # List of supported base models
-        supported_base_models = [
-            "schnell",
-            "dev",
-            "dev-fill",
-            "dev-depth",
-            "dev-redux"
-        ]
+        supported_base_models = ["schnell", "dev", "dev-fill", "dev-depth", "dev-redux"]
         base_model = None
         # Extract base_model from model_name if it contains any of the supported keywords
         model_name_lower = model_name.lower()
         for base in supported_base_models:
             if base in model_name_lower:
                 base_model = base
-                logger.info(f"Extracted base_model '{base_model}' from model_name '{model_name}'")
+                logger.info(
+                    f"Extracted base_model '{base_model}' from model_name '{model_name}'"
+                )
                 break
 
         # If we couldn't extract a base_model, set it to None
         if not base_model:
-            logger.info(f"Could not extract base_model from model_name '{model_name}', using None")
+            logger.info(
+                f"Could not extract base_model from model_name '{model_name}', using None"
+            )
 
         return base_model
 
@@ -65,7 +63,9 @@ class MFluxImageGenerator:
 
             # Let mflux handle model configuration
             self._flux = Flux1(
-                model_config=ModelConfig.from_name(model_name=model_name, base_model=base_model),
+                model_config=ModelConfig.from_name(
+                    model_name=model_name, base_model=base_model
+                ),
                 quantize=params.get("quantize"),
                 local_path=params.get("local_path"),
                 lora_paths=params.get("lora-paths") if params else None,
@@ -83,10 +83,10 @@ class MFluxImageGenerator:
             return 1024, 1024
 
     def generate(
-            self,
-            request: ImageGenerationRequest,
-            output_path: str,
-            **extra_params,
+        self,
+        request: ImageGenerationRequest,
+        output_path: str,
+        **extra_params,
     ) -> Image.Image:
         """Generate image using mflux"""
         # Parse image dimensions
@@ -100,7 +100,7 @@ class MFluxImageGenerator:
         logger.info(f"all_extra_params: {all_extra_params}")
 
         # Generate random seed if not specified
-        seed = all_extra_params.pop("seed", random.randint(0, 2 ** 32 - 1))
+        seed = all_extra_params.pop("seed", random.randint(0, 2**32 - 1))
 
         # Get or initialize Flux1 instance
         flux = self._get_flux(all_extra_params)
@@ -151,7 +151,9 @@ class ImagesService:
     def _get_generator(self, model_name: str) -> MFluxImageGenerator:
         """Get or create image generator instance"""
         if model_name not in self._generator_cache:
-            self._generator_cache[model_name] = MFluxImageGenerator(model_version=model_name)
+            self._generator_cache[model_name] = MFluxImageGenerator(
+                model_version=model_name
+            )
         return self._generator_cache[model_name]
 
     def _get_output_path(self, uid: str) -> str:
@@ -171,8 +173,8 @@ class ImagesService:
             print(f"Error cleaning up image {image_path}: {str(e)}")
 
     def generate_images(
-            self,
-            request: ImageGenerationRequest,
+        self,
+        request: ImageGenerationRequest,
     ) -> List[ImageObject]:
         """Generate images based on the request"""
         generated_images = []
@@ -186,9 +188,7 @@ class ImagesService:
             try:
                 # Generate the image
                 generator.generate(
-                    request=request,
-                    output_path=output_path,
-                    low_memory_mode=True
+                    request=request, output_path=output_path, low_memory_mode=True
                 )
 
                 # Create response object based on format
