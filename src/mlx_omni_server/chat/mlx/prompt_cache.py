@@ -64,6 +64,8 @@ class PromptCache:
         logger.debug(f"*** Resetting cache. ***")
         self.model_key = current_model_id
         self.cache = make_prompt_cache(current_model)
+        self.cached_token_count = 0
+
         # TODO: Add support for draft model
         # if self.model_provider.draft_model is not None:
         #     self.cache += make_prompt_cache(
@@ -114,6 +116,6 @@ class PromptCache:
                 f"Unexpected cache state: com_prefix_len ({com_prefix_len}) > cache_len ({cache_len}). Resetting cache."
             )
             self.reset_prompt_cache(prompt, current_model, prompt)
-        self.cached_token_count = cache_len
+        self.cached_token_count = len(self.tokens) - len(prompt)
         logger.debug(f"Returning {len(prompt)} tokens for processing.")
         return prompt
