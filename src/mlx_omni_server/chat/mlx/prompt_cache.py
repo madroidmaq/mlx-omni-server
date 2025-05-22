@@ -61,12 +61,6 @@ class PromptCache:
     cached_token_count: int = 0
 
     def reset_prompt_cache(self, current_model_id, current_model, prompt):
-        """Resets the prompt cache and associated state.
-
-        Args:
-            prompt (List[int]): The tokenized new prompt which will populate the
-                reset cache.
-        """
         logger.debug(f"*** Resetting cache. ***")
         self.model_key = current_model_id
         self.cache = make_prompt_cache(current_model)
@@ -78,23 +72,6 @@ class PromptCache:
         self.tokens = list(prompt)  # Cache the new prompt fully
 
     def get_prompt_cache(self, current_model_id, current_model, prompt):
-        """
-        Determines the portion of the prompt that needs processing by comparing
-        it to the cached prompt and attempting to reuse the common prefix.
-
-        This function updates the internal prompt cache state (tokens and model cache)
-        based on the comparison. If a common prefix exists, it attempts to trim
-        the model cache (if supported) to match the common prefix length, avoiding
-        recomputation.
-
-        Args:
-            prompt (List[int]): The tokenized new prompt.
-
-        Returns:
-            List[int]: The suffix of the prompt that actually needs to be processed
-                       by the model. This will be the full prompt if the cache is
-                       reset or cannot be effectively used.
-        """
         cache_len = len(self.tokens)
         prompt_len = len(prompt)
         com_prefix_len = common_prefix_len(self.tokens, prompt)
