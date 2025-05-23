@@ -21,7 +21,7 @@ from ..schema import (
 )
 from ..text_models import BaseTextModel, GenerateResult, GenerationParams
 from .outlines_logits_processor import OutlinesLogitsProcessor
-from .prompt_cache import PromptCache, process_prompt_cache, update_prompt_cache
+from .prompt_cache import PromptCache
 from .stop_tokens_checker import StopTokensChecker
 from .tools.chat_tokenizer import ChatTokenizer
 
@@ -38,9 +38,7 @@ class MLXModel(BaseTextModel):
         self._default_top_k = -1
         self._chat_tokenizer = tokenizer
         self._prompt_cache = PromptCache()
-        self._cached_token_count = (
-            0  # Track the number of cached tokens used in the current request
-        )
+        self._prompt_cache_tokens_count = 0
         logger.info(f"Initialized MLXModel with model_id: {model_id}")
 
     def _get_generation_params(
@@ -99,14 +97,6 @@ class MLXModel(BaseTextModel):
             "generate_kwargs": generate_kwargs,
             "template_kwargs": template_kwargs,
         }
-
-    def _get_prompt_cache(self, prompt: List[int]) -> List[int]:
-        processed_prompt, cached_token_count = process_prompt_cache(
-            prompt, self._prompt_cache, self._model_id, self._model
-        )
-
-        self._cached_token_count = cached_token_count
-        return processed_prompt
 
     def _process_logprobs(
         self,
@@ -197,11 +187,13 @@ class MLXModel(BaseTextModel):
             )
             sampler = make_sampler(**sampler_kwargs)
 
-            # 处理提示缓存
+            # process prompt cache
             tokenized_prompt = tokenizer.encode(prompt)
-            processed_prompt = self._get_prompt_cache(tokenized_prompt)
+            processed_prompt = self._prompt_cache.get_prompt_cache(
+                self._model_id, self._model, tokenized_prompt
+            )
             logger.debug(
-                f"Using {self._cached_token_count} cached tokens out of {len(tokenized_prompt)} total tokens"
+                f"Using {self._prompt_cache.cached_token_count} cached tokens out of {len(tokenized_prompt)} total tokens"
             )
 
             for response in stream_generate(
@@ -254,9 +246,11 @@ class MLXModel(BaseTextModel):
                 if should_trim:
                     break
 
+            self._prompt_cache_tokens_count = self._prompt_cache.cached_token_count
             logger.debug(
-                f"The generation is completed, with a total of {len(self._prompt_cache.tokens)} tokens cached."
+                f"The generation is completed, with a total of {self._prompt_cache_tokens_count} tokens cached."
             )
+            self._prompt_cache.extend_completion_cache(current_tokens)
         except Exception as e:
             logger.error(f"Error during stream generation: {str(e)}", exc_info=True)
             raise
@@ -315,17 +309,9 @@ class MLXModel(BaseTextModel):
             else:
                 message = ChatMessage(role=Role.ASSISTANT, content=completion)
 
-            tokenized_prompt = self._chat_tokenizer.tokenizer.encode(prompt)
-            update_prompt_cache(self._prompt_cache, tokenized_prompt, self._model_id)
-            logger.debug(
-                f"Update the prompt cache, totaling {len(self._prompt_cache.tokens)} tokens."
-            )
-
-            # 使用在 _stream_generate 中记录的缓存令牌数量
-            cached_tokens = self._cached_token_count
+            cached_tokens = self._prompt_cache_tokens_count
             logger.debug(f"Generate response with {cached_tokens} cached tokens")
 
-            # 创建 prompt_tokens_details
             prompt_tokens_details = None
             if cached_tokens > 0:
                 from ..schema import PromptTokensDetails
@@ -410,7 +396,7 @@ class MLXModel(BaseTextModel):
 
             if request.stream_options and request.stream_options.include_usage:
                 created = int(time.time())
-                cached_tokens = self._cached_token_count
+                cached_tokens = self._prompt_cache_tokens_count
                 logger.debug(f"Stream response with {cached_tokens} cached tokens")
 
                 prompt_tokens_details = None
