@@ -6,9 +6,8 @@ to improve performance in multi-turn conversations.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, List, Tuple
+from typing import Any, List
 
-from mlx import nn
 from mlx_lm.models.cache import (
     can_trim_prompt_cache,
     make_prompt_cache,
@@ -61,7 +60,7 @@ class PromptCache:
     cached_token_count: int = 0
 
     def reset_prompt_cache(self, current_model_id, current_model, prompt):
-        logger.debug(f"*** Resetting cache. ***")
+        logger.debug("*** Resetting cache. ***")
         self.model_key = current_model_id
         self.cache = make_prompt_cache(current_model)
         self.cached_token_count = 0
@@ -83,7 +82,7 @@ class PromptCache:
 
         # Condition 1: Model changed or no common prefix at all. Reset cache.
         if self.model_key != current_model_id or com_prefix_len == 0:
-            self.reset_prompt_cache(prompt, current_model, prompt)
+            self.reset_prompt_cache(current_model_id, current_model, prompt)
 
         # Condition 2: Common prefix exists and matches cache length. Process suffix.
         elif com_prefix_len == cache_len:
@@ -107,15 +106,15 @@ class PromptCache:
                 prompt = prompt[com_prefix_len:]
                 self.tokens.extend(prompt)
             else:
-                logger.debug(f"    Cache cannot be trimmed. Resetting cache.")
-                self.reset_prompt_cache(prompt, current_model, prompt)
+                logger.debug("    Cache cannot be trimmed. Resetting cache.")
+                self.reset_prompt_cache(current_model_id, current_model, prompt)
 
         # This case should logically not be reached if com_prefix_len <= cache_len
         else:
             logger.error(
                 f"Unexpected cache state: com_prefix_len ({com_prefix_len}) > cache_len ({cache_len}). Resetting cache."
             )
-            self.reset_prompt_cache(prompt, current_model, prompt)
+            self.reset_prompt_cache(current_model_id, current_model, prompt)
         self.cached_token_count = len(self.tokens) - len(prompt)
         logger.debug(f"Returning {len(prompt)} tokens for processing.")
         return prompt
