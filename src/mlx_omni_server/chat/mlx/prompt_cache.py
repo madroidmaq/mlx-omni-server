@@ -59,6 +59,10 @@ class PromptCache:
     model_key: str = ""
     cached_token_count: int = 0
 
+    def extend_completion_cache(self, completion_tokens):
+        self.tokens.extend(completion_tokens)
+        self.cached_token_count += len(completion_tokens)
+
     def reset_prompt_cache(self, current_model_id, current_model, prompt):
         logger.debug("*** Resetting cache. ***")
         self.model_key = current_model_id
@@ -115,6 +119,7 @@ class PromptCache:
                 f"Unexpected cache state: com_prefix_len ({com_prefix_len}) > cache_len ({cache_len}). Resetting cache."
             )
             self.reset_prompt_cache(current_model_id, current_model, prompt)
+
         self.cached_token_count = len(self.tokens) - len(prompt)
         logger.debug(f"Returning {len(prompt)} tokens for processing.")
         return prompt

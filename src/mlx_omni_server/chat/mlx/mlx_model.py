@@ -38,6 +38,7 @@ class MLXModel(BaseTextModel):
         self._default_top_k = -1
         self._chat_tokenizer = tokenizer
         self._prompt_cache = PromptCache()
+        self._prompt_cache_tokens_count = 0
         logger.info(f"Initialized MLXModel with model_id: {model_id}")
 
     def _get_generation_params(
@@ -245,9 +246,11 @@ class MLXModel(BaseTextModel):
                 if should_trim:
                     break
 
+            self._prompt_cache_tokens_count = self._prompt_cache.cached_token_count
             logger.debug(
-                f"The generation is completed, with a total of {len(self._prompt_cache.tokens)} tokens cached."
+                f"The generation is completed, with a total of {self._prompt_cache_tokens_count} tokens cached."
             )
+            self._prompt_cache.extend_completion_cache(current_tokens)
         except Exception as e:
             logger.error(f"Error during stream generation: {str(e)}", exc_info=True)
             raise
@@ -306,11 +309,9 @@ class MLXModel(BaseTextModel):
             else:
                 message = ChatMessage(role=Role.ASSISTANT, content=completion)
 
-            # 使用在 _stream_generate 中记录的缓存令牌数量
-            cached_tokens = self._prompt_cache.cached_token_count
+            cached_tokens = self._prompt_cache_tokens_count
             logger.debug(f"Generate response with {cached_tokens} cached tokens")
 
-            # 创建 prompt_tokens_details
             prompt_tokens_details = None
             if cached_tokens > 0:
                 from ..schema import PromptTokensDetails
@@ -395,7 +396,7 @@ class MLXModel(BaseTextModel):
 
             if request.stream_options and request.stream_options.include_usage:
                 created = int(time.time())
-                cached_tokens = self._prompt_cache.cached_token_count
+                cached_tokens = self._prompt_cache_tokens_count
                 logger.debug(f"Stream response with {cached_tokens} cached tokens")
 
                 prompt_tokens_details = None
