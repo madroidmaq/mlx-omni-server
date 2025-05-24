@@ -41,7 +41,7 @@ class TestPromptCache:
     def test_conversation_with_prompt_cache(self, openai_client):
         try:
             logger.info("\n===== Conversation with prompt cache =====")
-            model = "mlx-community/Llama-3.2-1B-Instruct-4bit"
+            model = "mlx-community/gemma-3-1b-it-4bit-DWQ"
             prompt = "Can you tell me more about your capabilities?"
 
             messages = [

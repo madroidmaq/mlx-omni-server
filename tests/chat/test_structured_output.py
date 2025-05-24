@@ -32,7 +32,7 @@ class TestStructuredOutput:
     def test_structured_output_with_json_schema(self, openai_client):
         """Test structured generation with a JSON schema."""
         prompt = "List three colors and their hex codes."
-        model_name = "mlx-community/Llama-3.2-1B-Instruct-4bit"
+        model_name = "mlx-community/gemma-3-1b-it-4bit-DWQ"
 
         json_schema = {
             "name": "colors",

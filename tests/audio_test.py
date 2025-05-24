@@ -47,6 +47,46 @@ def test_speech(openai_client):
         raise
 
 
+def test_mlx_audio_kokoro_speech(openai_client):
+    """Test text-to-speech functionality using OpenAI client"""
+    try:
+        model = "mlx-community/Kokoro-82M-4bit"
+        response = openai_client.audio.speech.create(
+            model=model,
+            input="The quick brown fox jumped over the lazy dog.",
+            voice="af_sky",
+        )
+        logger.info(f"MLX Audio Speech Response: {response}")
+
+        # Validate response
+        assert response is not None, "No response received"
+        # If further validation of audio content is needed, add more assertions
+
+    except Exception as e:
+        logger.error(f"Test error: {str(e)}")
+        raise
+
+
+def test_mlx_audio_dia_speech(openai_client):
+    """Test text-to-speech functionality using OpenAI client"""
+    try:
+        model = "mlx-community/Dia-1.6B-4bit"
+        response = openai_client.audio.speech.create(
+            model=model,
+            input="The quick brown fox jumped over the lazy dog.",
+            voice="demo",
+        )
+        logger.info(f"MLX Audio Speech Response: {response}")
+
+        # Validate response
+        assert response is not None, "No response received"
+        # If further validation of audio content is needed, add more assertions
+
+    except Exception as e:
+        logger.error(f"Test error: {str(e)}")
+        raise
+
+
 def test_transcription(openai_client):
     """Test audio transcription functionality using OpenAI client"""
     try:

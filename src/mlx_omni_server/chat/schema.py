@@ -262,7 +262,12 @@ class ChatCompletionRequest(BaseModel):
             "n",
             "tools",
             "tool_choice",
+            "parallel_tool_calls",
             "stream_options",
             "response_format",
+            "user",
+            "metadata",
+            "modalities",
+            "store",
         }
         return {k: v for k, v in self.model_dump().items() if k not in standard_fields}

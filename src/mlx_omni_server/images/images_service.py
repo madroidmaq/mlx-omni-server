@@ -1,58 +1,95 @@
 import base64
 import os
+import random
+from re import S
 import tempfile
 import time
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Optional, Tuple, Any
 
-from diffusionkit.mlx import DiffusionPipeline, FluxPipeline
+from PIL import Image
+from mflux import Config, Flux1, ModelConfig, StopImageGenerationException
+from mflux.callbacks.callback_registry import CallbackRegistry
+from mflux.callbacks.instances.memory_saver import MemorySaver
+from mflux.callbacks.instances.stepwise_handler import StepwiseHandler
 
-from .schema import ImageGenerationRequest, ImageObject, ResponseFormat
+from .schema import ImageGenerationRequest, ImageObject, ResponseFormat, ImageSize
+from ..utils.logger import logger
 
 
-class MLXImageGenerator:
-    def __init__(self, model_version: str = "argmaxinc/mlx-FLUX.1-schnell"):
+class MFluxImageGenerator:
+    """Image generator using mflux library"""
+
+    def __init__(self, model_version: str = "dhairyashil/FLUX.1-schnell-mflux-4bit"):
         self.model_version = model_version
-        self.height = {
-            "argmaxinc/mlx-stable-diffusion-3-medium": 512,
-            "argmaxinc/mlx-stable-diffusion-3.5-large": 1024,
-            "argmaxinc/mlx-stable-diffusion-3.5-large-4bit-quantized": 1024,
-            "argmaxinc/mlx-FLUX.1-schnell": 512,
-            "argmaxinc/mlx-FLUX.1-schnell-4bit-quantized": 512,
-            "argmaxinc/mlx-FLUX.1-dev": 512,
-        }[model_version]
 
-        self.width = {
-            "argmaxinc/mlx-stable-diffusion-3-medium": 512,
-            "argmaxinc/mlx-stable-diffusion-3.5-large": 1024,
-            "argmaxinc/mlx-stable-diffusion-3.5-large-4bit-quantized": 1024,
-            "argmaxinc/mlx-FLUX.1-schnell": 512,
-            "argmaxinc/mlx-FLUX.1-schnell-4bit-quantized": 512,
-            "argmaxinc/mlx-FLUX.1-dev": 512,
-        }[model_version]
+        # Initialize model instance (lazy loading)
+        self._flux = None
 
-        self.shift = {
-            "argmaxinc/mlx-stable-diffusion-3-medium": 3.0,
-            "argmaxinc/mlx-stable-diffusion-3.5-large": 3.0,
-            "argmaxinc/mlx-stable-diffusion-3.5-large-4bit-quantized": 3.0,
-            "argmaxinc/mlx-FLUX.1-schnell": 1.0,
-            "argmaxinc/mlx-FLUX.1-schnell-4bit-quantized": 1.0,
-            "argmaxinc/mlx-FLUX.1-dev": 1.0,
-        }[model_version]
+    def _extra_base_model(self, model_name: str):
+        # List of supported base models
+        supported_base_models = [
+            "schnell",
+            "dev",
+            "dev-fill",
+            "dev-depth",
+            "dev-redux"
+        ]
+        base_model = None
+        # Extract base_model from model_name if it contains any of the supported keywords
+        model_name_lower = model_name.lower()
+        for base in supported_base_models:
+            if base in model_name_lower:
+                base_model = base
+                logger.info(f"Extracted base_model '{base_model}' from model_name '{model_name}'")
+                break
 
-        self.pipeline_class = (
-            FluxPipeline if "FLUX" in model_version else DiffusionPipeline
-        )
+        # If we couldn't extract a base_model, set it to None
+        if not base_model:
+            logger.info(f"Could not extract base_model from model_name '{model_name}', using None")
+
+        return base_model
+
+    def _get_flux(self, params: dict = None) -> Flux1:
+        """Get or initialize Flux1 instance"""
+        if self._flux is None:
+            # Extract model name from full path
+            model_name = self.model_version
+
+            # Get base_model from params or extract from model_name
+            base_model = params.get("base-model") if params else None
+
+            # If base_model is not provided, try to extract it from model_name
+            if model_name.__contains__("/") and not base_model:
+                base_model = self._extra_base_model(model_name)
+
+            # Let mflux handle model configuration
+            self._flux = Flux1(
+                model_config=ModelConfig.from_name(model_name=model_name, base_model=base_model),
+                quantize=params.get("quantize"),
+                local_path=params.get("local_path"),
+                lora_paths=params.get("lora-paths") if params else None,
+                lora_scales=params.get("lora-scales") if params else None,
+            )
+
+        return self._flux
+
+    def _parse_size(self, size_str: str) -> Tuple[int, int]:
+        """Parse size string to width and height"""
+        try:
+            width, height = map(int, size_str.split("x"))
+            return width, height
+        except (ValueError, AttributeError):
+            return 1024, 1024
 
     def generate(
-        self,
-        request: ImageGenerationRequest,
-        output_path: str,
-        low_memory_mode: bool = True,
-        **extra_params,
-    ):
-        """Generate image using MLX DiffusionKit with request parameters"""
-        # Extract size parameters from request
+            self,
+            request: ImageGenerationRequest,
+            output_path: str,
+            **extra_params,
+    ) -> Image.Image:
+        """Generate image using mflux"""
+        # Parse image dimensions
         width, height = self._parse_size(request.size)
 
         # Get extra parameters from request
@@ -60,54 +97,46 @@ class MLXImageGenerator:
 
         # Merge all extra parameters, with passed extra_params taking precedence
         all_extra_params = {**request_extra_params, **extra_params}
+        logger.info(f"all_extra_params: {all_extra_params}")
 
-        # Initialize model with appropriate settings
-        sd = self.pipeline_class(
-            w16=True,
-            shift=all_extra_params.pop("shift", self.shift),
-            use_t5=all_extra_params.pop(
-                "use_t5", False
-            ),  # Can be overridden by extra_params
-            model_version=self.model_version,
-            low_memory_mode=low_memory_mode,
-            a16=True,
-        )
+        # Generate random seed if not specified
+        seed = all_extra_params.pop("seed", random.randint(0, 2 ** 32 - 1))
 
-        # Default parameters for generate_image
-        gen_params = {
-            "text": request.prompt,  # prompt parameter is renamed to text
-            "num_steps": all_extra_params.pop("num_steps", 50),
-            "cfg_weight": all_extra_params.pop(
-                "cfg_weight", 0.0 if "FLUX" in self.model_version else 5.0
-            ),
-            "negative_text": all_extra_params.pop("negative_prompt", ""),
-            "latent_size": all_extra_params.pop(
-                "latent_size", (height // 8, width // 8)
-            ),
-            "seed": all_extra_params.pop("seed", None),
-            "verbose": all_extra_params.pop("verbose", False),
-            "image_path": all_extra_params.pop("image_path", None),
-            "denoise": all_extra_params.pop("denoise", 1.0),
-        }
-
-        # Add any remaining extra parameters
-        gen_params.update(all_extra_params)
+        # Get or initialize Flux1 instance
+        flux = self._get_flux(all_extra_params)
 
         # Generate image
-        image, _ = sd.generate_image(**gen_params)
+        low_memory_mode = all_extra_params.get("low_arm", True)
+        memory_saver = None
+        if low_memory_mode:
+            memory_saver = MemorySaver(flux=flux, keep_transformer=seed > 1)
+            CallbackRegistry.register_before_loop(memory_saver)
+            CallbackRegistry.register_in_loop(memory_saver)
+            CallbackRegistry.register_after_loop(memory_saver)
 
-        # Save generated image
-        image.save(output_path)
-        return image
-
-    def _parse_size(self, size_str: str) -> tuple[int, int]:
-        """Parse size string into width and height"""
         try:
-            width, height = map(int, size_str.split("x"))
-            return width, height
-        except (ValueError, AttributeError):
-            # Default to model's default size if parsing fails
-            return self.width, self.height
+            # Generate image
+            image = flux.generate_image(
+                seed=seed,
+                prompt=request.prompt,
+                config=Config(
+                    num_inference_steps=all_extra_params.pop("steps", 4),
+                    height=height,
+                    width=width,
+                    guidance=all_extra_params.pop("guidance", 4.0),
+                ),
+            )
+
+            # Save image
+            image.save(path=output_path, export_json_metadata=False)
+            return image
+        except StopImageGenerationException as e:
+            raise Exception(f"Image generation interrupted: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Error generating image: {str(e)}")
+        finally:
+            if memory_saver:
+                print(memory_saver.memory_stats())
 
 
 class ImagesService:
@@ -115,6 +144,15 @@ class ImagesService:
         # Use system temporary directory
         self.output_dir = Path(tempfile.gettempdir()) / "mlx_omni_server" / "images"
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Cache loaded generator instances
+        self._generator_cache: Dict[str, MFluxImageGenerator] = {}
+
+    def _get_generator(self, model_name: str) -> MFluxImageGenerator:
+        """Get or create image generator instance"""
+        if model_name not in self._generator_cache:
+            self._generator_cache[model_name] = MFluxImageGenerator(model_version=model_name)
+        return self._generator_cache[model_name]
 
     def _get_output_path(self, uid: str) -> str:
         """Generate unique output path for image"""
@@ -133,12 +171,12 @@ class ImagesService:
             print(f"Error cleaning up image {image_path}: {str(e)}")
 
     def generate_images(
-        self,
-        request: ImageGenerationRequest,
+            self,
+            request: ImageGenerationRequest,
     ) -> List[ImageObject]:
         """Generate images based on the request"""
         generated_images = []
-        generator = MLXImageGenerator(model_version=request.model)
+        generator = self._get_generator(model_name=request.model)
 
         for i in range(request.n):
             # Generate unique identifier for this image
@@ -148,15 +186,19 @@ class ImagesService:
             try:
                 # Generate the image
                 generator.generate(
-                    request=request, output_path=output_path, low_memory_mode=True
+                    request=request,
+                    output_path=output_path,
+                    low_memory_mode=True
                 )
 
                 # Create response object based on format
                 image_object = ImageObject(revised_prompt=request.prompt)
 
-                # Response All Format
-                image_object.b64_json = self._image_to_base64(output_path)
-                image_object.url = f"file://{output_path}"
+                # Response format
+                if request.response_format == ResponseFormat.B64_JSON:
+                    image_object.b64_json = self._image_to_base64(output_path)
+                else:  # URL format
+                    image_object.url = f"file://{output_path}"
 
                 generated_images.append(image_object)
 

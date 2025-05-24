@@ -30,7 +30,7 @@ class TestChatCompletions:
 
     def test_chat_completions_normal(self, openai_client):
         try:
-            model = "mlx-community/Llama-3.2-1B-Instruct-4bit"
+            model = "mlx-community/gemma-3-1b-it-4bit-DWQ"
             response = openai_client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": "hello"}],
@@ -50,7 +50,7 @@ class TestChatCompletions:
 
     def test_chat_completions_extra_body(self, openai_client):
         try:
-            model = "mlx-community/Llama-3.2-1B-Instruct-4bit"
+            model = "mlx-community/gemma-3-1b-it-4bit-DWQ"
             response = openai_client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": "hello"}],
@@ -78,7 +78,7 @@ class TestChatCompletions:
     def test_chat_completions_stop_word(self, openai_client):
         """Test if stop words work correctly in chat completions"""
         response = openai_client.chat.completions.create(
-            model="mlx-community/Llama-3.2-1B-Instruct-4bit",
+            model="mlx-community/gemma-3-1b-it-4bit-DWQ",
             messages=[
                 {
                     "role": "system",
@@ -95,7 +95,7 @@ class TestChatCompletions:
         )
 
         # Validate basic response structure
-        assert response.model == "mlx-community/Llama-3.2-1B-Instruct-4bit"
+        assert response.model == "mlx-community/gemma-3-1b-it-4bit-DWQ"
         assert response.object == "chat.completion"
 
         # Log generated content
@@ -118,7 +118,7 @@ class TestChatCompletions:
     def test_chat_completions_stream(self, openai_client):
         """Test basic streaming chat completion functionality"""
         try:
-            model = "mlx-community/Llama-3.2-1B-Instruct-4bit"
+            model = "mlx-community/gemma-3-1b-it-4bit-DWQ"
             stream = openai_client.chat.completions.create(
                 model=model, messages=[{"role": "user", "content": "hi"}], stream=True
             )
@@ -154,7 +154,7 @@ class TestChatCompletions:
     def test_chat_completions_stream_options(self, openai_client):
         """Test streaming chat completion with additional options"""
         try:
-            model = "mlx-community/Llama-3.2-1B-Instruct-4bit"
+            model = "mlx-community/gemma-3-1b-it-4bit-DWQ"
             stream = openai_client.chat.completions.create(
                 model=model,
                 messages=[

@@ -30,7 +30,7 @@ class ResponseFormat(str, Enum):
 class ImageGenerationRequest(BaseModel):
     prompt: str = Field(..., max_length=4000)
     model: Optional[str] = Field(
-        default="argmaxinc/mlx-FLUX.1-schnell",
+        default="dhairyashil/FLUX.1-schnell-mflux-4bit",
         description="The model to use for image generation",
     )
     n: Optional[int] = Field(default=1, ge=1, le=10)

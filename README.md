@@ -37,94 +37,360 @@ The server implements OpenAI-compatible endpoints:
     - ✅ `/v1/models/{model}` - Retrieve or Delete model
 - [Images](https://platform.openai.com/docs/api-reference/images)
     - ✅ `/v1/images/generations` - Image generation
+- [Embeddings](https://platform.openai.com/docs/api-reference/embeddings)
+    - ✅ `/v1/embeddings` - Create embeddings for text
 
-## Installation
 
-```bash
-# Install using pip
-pip install mlx-omni-server
-```
 
 ## Quick Start
 
-There are two ways to use MLX Omni Server:
+Follow these simple steps to get started with MLX Omni Server:
 
-### Method 1: Using the HTTP Server
-
-1. Start the server:
+1. Install the package
 
 ```bash
-# If installed via pip as a package
+pip install mlx-omni-server
+```
+
+2. Start the server
+
+```bash
 mlx-omni-server
 ```
 
-You can use `--port` to specify a different port, such as: `mlx-omni-server --port 10240`. The default port is 10240.
+3. Run a simple chat example using curl
 
-You can view more startup parameters by using `mlx-omni-server --help`.
+```bash
+curl http://localhost:10240/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mlx-community/gemma-3-1b-it-4bit-DWQ",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What can you do?"
+      }
+    ]
+  }'
+```
 
-2. Configure the OpenAI client to use your local server:
+That's it! You're now running AI locally on your Mac. See [Advanced Usage](#advanced-usage) for more examples.
+
+### Server Options
+
+```bash
+# Start with default settings (port 10240)
+mlx-omni-server
+
+# Or specify a custom port
+mlx-omni-server --port 8000
+
+# View all available options
+mlx-omni-server --help
+```
+
+### Basic Client Setup
 
 ```python
 from openai import OpenAI
 
-# Configure client to use local server
+# Connect to your local server
 client = OpenAI(
     base_url="http://localhost:10240/v1",  # Point to local server
-    api_key="not-needed"  # API key is not required for local server
+    api_key="not-needed"                   # API key not required
 )
+
+# Make a simple chat request
+response = client.chat.completions.create(
+    model="mlx-community/gemma-3-1b-it-4bit-DWQ",
+    messages=[{"role": "user", "content": "Hello, how are you?"}]
+)
+print(response.choices[0].message.content)
 ```
 
-### Method 2: Using TestClient (No Server Required)
+## Advanced Usage
 
-For development or testing, you can use TestClient to interact directly with the application without starting a server:
+MLX Omni Server supports multiple ways of interaction and various AI capabilities. Here's how to use each:
+
+### API Usage Options
+
+MLX Omni Server provides flexible ways to interact with AI capabilities:
+
+#### REST API
+
+Access the server directly using HTTP requests:
+
+```bash
+# Chat completions endpoint
+curl http://localhost:10240/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mlx-community/gemma-3-1b-it-4bit-DWQ",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+
+# Get available models
+curl http://localhost:10240/v1/models
+```
+
+#### OpenAI SDK
+
+Use the official OpenAI Python SDK for seamless integration:
 
 ```python
 from openai import OpenAI
-from fastapi.testclient import TestClient
-from mlx_omni_server.main import app
 
-# Use TestClient to interact directly with the application
 client = OpenAI(
-    http_client=TestClient(app)  # Use TestClient directly, no network service needed
+    base_url="http://localhost:10240/v1",  # Point to local server
+    api_key="not-needed"                   # API key not required for local server
 )
 ```
 
-### Example Usage
+See the FAQ section for information on using TestClient for development.
 
-Regardless of which method you choose, you can use the client in the same way:
+
+
+### API Examples
+
+#### Chat Completion
 
 ```python
-# Chat Completion Example
-chat_completion = client.chat.completions.create(
-    model="mlx-community/Llama-3.2-1B-Instruct-4bit",
+response = client.chat.completions.create(
+    model="mlx-community/Llama-3.2-3B-Instruct-4bit",
     messages=[
-        {"role": "user", "content": "What can you do?"}
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Hello!"}
+    ],
+    temperature=0,
+    stream=True  # this time, we set stream=True
+)
+
+for chunk in response:
+    print(chunk)
+    print(chunk.choices[0].delta.content)
+    print("****************")
+```
+
+<details>
+<summary>Curl Example</summary>
+
+```shell
+curl http://localhost:10240/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mlx-community/Llama-3.2-3B-Instruct-4bit",
+    "stream": true,
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a helpful assistant."
+      },
+      {
+        "role": "user",
+        "content": "Hello!"
+      }
     ]
-)
+  }'
+```
 
-# Text-to-Speech Example
+</details>
+
+#### Text-to-Speech
+
+```python
+speech_file_path = "mlx_example.wav"
 response = client.audio.speech.create(
-    model="lucasnewman/f5-tts-mlx",
-    input="Hello, welcome to MLX Omni Server!"
+  model="lucasnewman/f5-tts-mlx",
+  voice="alloy", # voice si not working for now
+  input="MLX project is awsome.",
 )
+response.stream_to_file(speech_file_path)
+```
 
-# Speech-to-Text Example
+
+<details>
+<summary>Curl Example</summary>
+
+```shell
+curl -X POST "http://localhost:10240/v1/audio/speech" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "lucasnewman/f5-tts-mlx",
+    "input": "MLX project is awsome",
+    "voice": "alloy"
+  }' \
+  --output ~/Desktop/mlx.wav
+```
+
+</details>
+
+#### Speech-to-Text
+
+```python
 audio_file = open("speech.mp3", "rb")
 transcript = client.audio.transcriptions.create(
     model="mlx-community/whisper-large-v3-turbo",
     file=audio_file
 )
 
-# Image Generation Example
+print(transcript.text)
+```
+
+<details>
+<summary>Curl Example</summary>
+
+```shell
+curl -X POST "http://localhost:10240/v1/audio/transcriptions" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@mlx_example.wav" \
+  -F "model=mlx-community/whisper-large-v3-turbo"
+```
+
+Response:
+
+```json
+{
+  "text": " MLX Project is awesome!"
+}
+```
+
+</details>
+
+
+#### Image Generation
+
+```python
 image_response = client.images.generate(
     model="argmaxinc/mlx-FLUX.1-schnell",
     prompt="A serene landscape with mountains and a lake",
     n=1,
     size="512x512"
 )
+
 ```
 
-You can view more examples in [examples](examples).
+<details>
+<summary>Curl Example</summary>
+
+```shell
+curl http://localhost:10240/v1/images/generations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "argmaxinc/mlx-FLUX.1-schnell",
+    "prompt": "A cute baby sea otter",
+    "n": 1,
+    "size": "1024x1024"
+  }'
+
+```
+
+</details>
+
+#### Embeddings
+
+```python
+# Generate embedding for a single text
+response = client.embeddings.create(
+    model="mlx-community/all-MiniLM-L6-v2-4bit", input="I like reading"
+)
+
+# Examine the response structure
+print(f"Response type: {type(response)}")
+print(f"Model used: {response.model}")
+print(f"Embedding dimension: {len(response.data[0].embedding)}")
+```
+
+<details>
+<summary>Curl Example</summary>
+
+```shell
+curl http://localhost:10240/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mlx-community/all-MiniLM-L6-v2-4bit",
+    "input": ["Hello world!", "Embeddings are useful for semantic search."]
+  }'
+```
+
+</details>
+
+
+For more detailed examples, check out the [examples](examples) directory.
+
+## FAQ
+
+
+### How are models managed?
+
+MLX Omni Server uses Hugging Face for model downloading and management. When you specify a model ID that hasn't been downloaded yet, the framework will automatically download it. However, since download times can vary significantly:
+
+- It's recommended to pre-download models through Hugging Face before using them in your service
+- To use a locally downloaded model, simply set the `model` parameter to the local model path
+
+```python
+# Using a model from Hugging Face
+response = client.chat.completions.create(
+    model="mlx-community/gemma-3-1b-it-4bit-DWQ",  # Will download if not available
+    messages=[{"role": "user", "content": "Hello"}]
+)
+
+# Using a local model
+response = client.chat.completions.create(
+    model="/path/to/your/local/model",  # Local model path
+    messages=[{"role": "user", "content": "Hello"}]
+)
+```
+
+The models currently supported on the machine can also be accessed through the following methods
+
+```bash
+curl http://localhost:10240/v1/models
+```
+
+
+### How do I specify which model to use?
+
+Use the `model` parameter when creating a request:
+
+```python
+response = client.chat.completions.create(
+    model="mlx-community/gemma-3-1b-it-4bit-DWQ",  # Specify model here
+    messages=[{"role": "user", "content": "Hello"}]
+)
+```
+
+
+### Can I use TestClient for development?
+
+Yes, TestClient allows you to use the OpenAI client without starting a local server. This is particularly useful for development and testing scenarios:
+
+```python
+from openai import OpenAI
+from fastapi.testclient import TestClient
+from mlx_omni_server.main import app
+
+# Use TestClient directly - no network service needed
+client = OpenAI(
+    http_client=TestClient(app)
+)
+
+# Now you can use the client just like with a running server
+response = client.chat.completions.create(
+    model="mlx-community/gemma-3-1b-it-4bit-DWQ",
+    messages=[{"role": "user", "content": "Hello"}]
+)
+```
+
+This approach bypasses the HTTP server entirely, making it ideal for unit testing and quick development iterations.
+
+
+### What if I get errors when starting the server?
+
+- Confirm you're using an Apple Silicon Mac (M1/M2/M3/M4)
+- Check that your Python version is 3.9 or higher
+- Verify you have the latest version of mlx-omni-server installed
+- Check the log output for more detailed error information
+
 
 ## Contributing
 
@@ -148,9 +414,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - API design inspired by [OpenAI](https://openai.com)
 - Uses [FastAPI](https://fastapi.tiangolo.com/) for the server implementation
 - Chat(text generation) by [mlx-lm](https://github.com/ml-explore/mlx-examples/tree/main/llms/mlx_lm)
-- Image generation by [diffusionkit](https://github.com/argmaxinc/DiffusionKit)
-- Text-to-Speech by [lucasnewman/f5-tts-mlx](https://github.com/lucasnewman/f5-tts-mlx)
+- Image generation by [mflux](https://github.com/filipstrand/mflux)
+- Text-to-Speech by [lucasnewman/f5-tts-mlx](https://github.com/lucasnewman/f5-tts-mlx) & [Blaizzy/mlx-audio](https://github.com/Blaizzy/mlx-audio)
 - Speech-to-Text by [mlx-whisper](https://github.com/ml-explore/mlx-examples/blob/main/whisper/README.md)
+- Embeddings by [mlx-embeddings](https://github.com/Blaizzy/mlx-embeddings)
 
 ## Disclaimer
 
