@@ -83,7 +83,11 @@ class ChatMessage(BaseModel):
     name: Optional[str] = None
     tool_calls: Optional[List[ToolCall]] = None
     tool_call_id: Optional[str] = None
-    reasoning: Optional[str] = None  # For model reasoning/thinking output
+    reasoning: Optional[str] = Field(
+        default=None,
+        alias="reasoning_content",
+        description="Model self-reflection captured from <think>...</think> tags",
+    )
 
     class Config:
         json_encoders = {bytes: lambda v: v.decode()}

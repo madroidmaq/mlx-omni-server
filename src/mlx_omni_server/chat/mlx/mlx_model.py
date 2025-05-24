@@ -424,7 +424,9 @@ class MLXModel(BaseTextModel):
             had_thinking_tag = False
 
             # Check if the model type might use thinking tokens
-            if "DeepSeek" in request.model:
+            # Configure thinking mode based on model name or explicit template parameter
+            enable_thinking = "DeepSeek" in request.model or template_kwargs.get("enable_thinking", False)
+            if enable_thinking:
                 in_thinking_mode = True
 
             for result in self._stream_generate(
@@ -432,8 +434,6 @@ class MLXModel(BaseTextModel):
                 request=request,
                 params=params,
             ):
-                created = int(time.time())
-                
                 chunk = result.text
                 completion += chunk
                 accumulated_text += chunk
@@ -441,10 +441,11 @@ class MLXModel(BaseTextModel):
                 # Check for thinking tags - handle both cases
                 if "<think>" in chunk and not in_thinking_mode:
                     in_thinking_mode = True
-                    # Split the chunk at <think>
+                    # Split the chunk at the first <think> tag
                     parts = chunk.split("<think>", 1)
                     visible_part = parts[0]
-                    thinking_part = "<think>" + (parts[1] if len(parts) > 1 else "")
+                    # Include the entire remainder with all potential <think> tags in the thinking content
+                    thinking_part = "<think>" + parts[1] if len(parts) > 1 else ""
                     
                     # Yield the visible part if any
                     if visible_part:
@@ -472,7 +473,6 @@ class MLXModel(BaseTextModel):
                     thinking_content = chunk  # Capture this chunk for processing
                     
                 if "</think>" in chunk and in_thinking_mode:
-                    had_thinking_tag = True
                     in_thinking_mode = False
                     # Split at </think>
                     parts = chunk.split("</think>", 1)
@@ -488,6 +488,7 @@ class MLXModel(BaseTextModel):
                     # Only emit reasoning if we have actual thinking content
                     if full_thinking:
                         # Use reasoning field
+                        created = int(time.time())
                         yield ChatCompletionChunk(
                             id=chat_id,
                             created=created,
@@ -526,6 +527,7 @@ class MLXModel(BaseTextModel):
                     thinking_content += chunk
                 else:
                     # Otherwise yield as normal content
+                    created = int(time.time())
                     yield ChatCompletionChunk(
                         id=chat_id,
                         created=created,
