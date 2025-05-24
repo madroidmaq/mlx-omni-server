@@ -42,6 +42,12 @@ class ChatTokenizer(ABC):
                     for item in msg_dict["content"]
                     if item.get("type") == "text"
                 )
+            # Only set empty string for user/assistant roles that require content
+            if msg_dict.get("content") is None and msg_dict["role"] in (
+                Role.USER,
+                Role.ASSISTANT,
+            ):
+                msg_dict["content"] = ""
             conversation.append(msg_dict)
 
         if should_prefill:
