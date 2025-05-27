@@ -8,6 +8,8 @@ from mlx_lm.generate import GenerationResponse, stream_generate
 from mlx_lm.sample_utils import make_logits_processors, make_sampler
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 
+from mlx_omni_server.chat.mlx.stop_tokens_checker import StopTokensChecker
+
 from ...utils.logger import logger
 from ..schema import (
     ChatCompletionChoice,
@@ -137,73 +139,121 @@ class MLXModel(BaseTextModel):
 
         return {**token_info, "top_logprobs": top_logprobs}
 
+    def _prepare_generation(
+        self,
+        request: ChatCompletionRequest,
+    ) -> tuple[Any, StopTokensChecker | None, dict[str, Any]]:
+        """Prepare all necessary components for generation.
+
+        This function handles parameter processing, tokenizer setup, prompt encoding,
+        sampler creation, and other preparation work for text generation.
+
+        Args:
+            request: The chat completion request containing generation parameters
+
+        Returns:
+            A tuple containing tokenizer, processed prompt, stop checker, and generation kwargs
+        """
+        # Process parameters from request
+        params = self._get_generation_params(request)
+
+        model_kwargs = params.get("model_kwargs", {})
+        logger.debug(f"Model kwargs: {model_kwargs}")
+
+        template_kwargs = params.get("template_kwargs") | model_kwargs.get(
+            "chat_template_config", {}
+        )
+        logger.debug(f"Chat Template kwargs: {template_kwargs}")
+
+        # Prepare generation kwargs
+        generate_kwargs = params.get("generate_kwargs", {})
+
+        # Prepare sampler parameters
+        sampler_kwargs = {
+            "temp": request.temperature or self._default_temperature,
+            "top_p": request.top_p or self._default_top_p,
+            "min_p": 0.0,
+            "min_tokens_to_keep": 1,
+            "top_k": self._default_top_k,
+        } | params.get("sampler_kwargs", {})
+
+        logger.debug(f"Sampler kwargs: {sampler_kwargs}")
+
+        # Create sampler and add to generate_kwargs
+        generate_kwargs["sampler"] = make_sampler(**sampler_kwargs)
+
+        # Encode prompt with chat template
+        prompt = self._chat_tokenizer.encode(
+            messages=request.messages,
+            tools=request.tools,
+            **template_kwargs,
+        )
+        logger.debug(f"Encoded prompt:\n{prompt}")
+
+        # Get tokenizer
+        tokenizer = self._chat_tokenizer.tokenizer
+
+        # Process prompt cache
+        tokenized_prompt = tokenizer.encode(prompt)
+        processed_prompt = self._prompt_cache.get_prompt_cache(
+            self._model_id, self._model, tokenized_prompt
+        )
+        generate_kwargs["prompt_cache"] = self._prompt_cache.cache
+        logger.debug(
+            f"Using {self._prompt_cache.cached_token_count} cached tokens out of {len(tokenized_prompt)} total tokens"
+        )
+
+        # Setup stop tokens checker if needed
+        stop_checker = None
+        if request.stop:
+            stop_checker = StopTokensChecker(
+                stop_words=request.stop,
+                tokenizer=tokenizer,
+            )
+
+        # Setup logits processors
+        if request.response_format and request.response_format.json_schema:
+            generate_kwargs["logits_processors"] = [
+                OutlinesLogitsProcessor(
+                    self._chat_tokenizer.tokenizer, request.response_format
+                )
+            ]
+        elif request.presence_penalty:
+            generate_kwargs["logits_processors"] = make_logits_processors(
+                repetition_penalty=request.presence_penalty
+            )
+
+        # Calculate max tokens for completion
+        generate_kwargs["max_tokens"] = (
+            request.max_completion_tokens
+            or request.max_tokens
+            or self._default_max_tokens
+        )
+
+        logger.debug(f"Generation kwargs: {generate_kwargs}")
+
+        return processed_prompt, stop_checker, generate_kwargs
+
     def _stream_generate(
         self,
-        prompt: str,
         request: ChatCompletionRequest,
-        params: GenerationParams,
     ) -> Generator[GenerateResult, None, None]:
         try:
-            sampler_kwargs = {
-                "temp": request.temperature or self._default_temperature,
-                "top_p": request.top_p or self._default_top_p,
-                "min_p": 0.0,
-                "min_tokens_to_keep": 1,
-                "top_k": self._default_top_k,
-            } | params.get("sampler_kwargs", {})
-            generate_kwargs = params.get("generate_kwargs", {})
-
-            logger.debug(f"Sampler kwargs: {sampler_kwargs}")
-            logger.debug(f"Generation kwargs: {generate_kwargs}")
-
+            # Get tokenizer
             tokenizer = self._chat_tokenizer.tokenizer
-            stop_checker = None
-            if request.stop:
-                stop_checker = StopTokensChecker(
-                    stop_words=request.stop,
-                    tokenizer=tokenizer,
-                )
 
-            logits_processors = None
-            if request.response_format and request.response_format.json_schema:
-                logits_processors = [
-                    OutlinesLogitsProcessor(
-                        self._chat_tokenizer.tokenizer, request.response_format
-                    )
-                ]
-            else:
-                if request.presence_penalty:
-                    logits_processors = make_logits_processors(
-                        repetition_penalty=request.presence_penalty
-                    )
+            # Prepare all generation components
+            processed_prompt, stop_checker, generate_kwargs = self._prepare_generation(
+                request
+            )
 
             current_tokens = []
             last_text = ""
-
-            max_completion_tokens = (
-                request.max_completion_tokens
-                or request.max_tokens
-                or self._default_max_tokens
-            )
-            sampler = make_sampler(**sampler_kwargs)
-
-            # process prompt cache
-            tokenized_prompt = tokenizer.encode(prompt)
-            processed_prompt = self._prompt_cache.get_prompt_cache(
-                self._model_id, self._model, tokenized_prompt
-            )
-            logger.debug(
-                f"Using {self._prompt_cache.cached_token_count} cached tokens out of {len(tokenized_prompt)} total tokens"
-            )
 
             for response in stream_generate(
                 model=self._model,
                 tokenizer=tokenizer,
                 prompt=processed_prompt,
-                max_tokens=max_completion_tokens,
-                sampler=sampler,
-                logits_processors=logits_processors,
-                prompt_cache=self._prompt_cache.cache,
                 **generate_kwargs,
             ):
                 if response.finish_reason is not None:
@@ -266,36 +316,12 @@ class MLXModel(BaseTextModel):
             finish_reason = "stop"
             result = None
 
-            params = self._get_generation_params(request)
-            model_kwargs = params.get("model_kwargs", {})
-            template_kwargs = params.get("template_kwargs", {}) | model_kwargs.get(
-                "chat_template_config", {}
-            )
-
-            logger.debug(f"Model kwargs: {model_kwargs}")
-            logger.debug(f"Chat Template kwargs: {template_kwargs}")
-
-            prompt = self._chat_tokenizer.encode(
-                messages=request.messages,
-                tools=request.tools,
-                tool_choice=request.tool_choice if request.tool_choice else None,
-                **template_kwargs,
-            )
-            logger.debug(f"Encoded prompt:\n{prompt}")
-
-            for result in self._stream_generate(
-                prompt=prompt,
-                request=request,
-                params=params,
-            ):
+            for result in self._stream_generate(request=request):
                 current_tokens.append(result.token)
                 completion = self._chat_tokenizer.tokenizer.decode(current_tokens)
 
                 if request.logprobs:
                     logprobs_result_list.append(result.logprobs)
-
-                if not prompt:
-                    prompt = result.text
 
                 if result.finish_reason:
                     finish_reason = result.finish_reason
@@ -356,28 +382,8 @@ class MLXModel(BaseTextModel):
         try:
             chat_id = f"chatcmpl-{uuid.uuid4().hex[:10]}"
 
-            params = self._get_generation_params(request)
-            model_kwargs = params.get("model_kwargs", {})
-            template_kwargs = params.get("template_kwargs") | model_kwargs.get(
-                "chat_template_config", {}
-            )
-
-            logger.debug(f"Model kwargs: {model_kwargs}")
-            logger.debug(f"Chat Template kwargs: {template_kwargs}")
-
-            prompt = self._chat_tokenizer.encode(
-                messages=request.messages,
-                tools=request.tools,
-                **template_kwargs,
-            )
-            logger.debug(f"Encoded prompt:\n{prompt}")
-
             completion = ""
-            for result in self._stream_generate(
-                prompt=prompt,
-                request=request,
-                params=params,
-            ):
+            for result in self._stream_generate(request=request):
                 created = int(time.time())
                 completion += result.text
                 yield ChatCompletionChunk(
