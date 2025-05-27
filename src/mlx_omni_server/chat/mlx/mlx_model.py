@@ -4,11 +4,10 @@ from typing import Any, Dict, Generator, List, Optional
 
 import mlx.core as mx
 import mlx.nn as nn
+from humanfriendly.terminal import message
 from mlx_lm.generate import GenerationResponse, stream_generate
 from mlx_lm.sample_utils import make_logits_processors, make_sampler
 from mlx_lm.tokenizer_utils import TokenizerWrapper
-
-from mlx_omni_server.chat.mlx.stop_tokens_checker import StopTokensChecker
 
 from ...utils.logger import logger
 from ..schema import (
@@ -26,6 +25,7 @@ from .outlines_logits_processor import OutlinesLogitsProcessor
 from .prompt_cache import PromptCache
 from .stop_tokens_checker import StopTokensChecker
 from .tools.chat_tokenizer import ChatTokenizer
+from .tools.reasoning_decoder import ReasoningDecoder
 
 
 class MLXModel(BaseTextModel):
@@ -41,6 +41,7 @@ class MLXModel(BaseTextModel):
         self._chat_tokenizer = tokenizer
         self._prompt_cache = PromptCache()
         self._prompt_cache_tokens_count = 0
+        self._reasoning_decoder = ReasoningDecoder(tokenizer)
         logger.info(f"Initialized MLXModel with model_id: {model_id}")
 
     def _get_generation_params(
@@ -190,6 +191,15 @@ class MLXModel(BaseTextModel):
         )
         logger.debug(f"Encoded prompt:\n{prompt}")
 
+        enable_thinking = template_kwargs.get("enable_thinking", True)
+        self._reasoning_decoder.enable_thinking = enable_thinking
+        if enable_thinking:
+            self._reasoning_decoder.set_thinking_prefix(True)
+            if prompt.endswith(f"<{self._reasoning_decoder.thinking_tag}>"):
+                self._reasoning_decoder.set_thinking_prefix(True)
+            else:
+                self._reasoning_decoder.set_thinking_prefix(False)
+
         # Get tokenizer
         tokenizer = self._chat_tokenizer.tokenizer
 
@@ -229,8 +239,6 @@ class MLXModel(BaseTextModel):
             or request.max_tokens
             or self._default_max_tokens
         )
-
-        logger.debug(f"Generation kwargs: {generate_kwargs}")
 
         return processed_prompt, stop_checker, generate_kwargs
 
@@ -330,10 +338,24 @@ class MLXModel(BaseTextModel):
                 raise RuntimeError("No tokens generated")
 
             logger.debug(f"Model Response:\n{completion}")
+            enable_thinking = self._reasoning_decoder.enable_thinking
+            if enable_thinking:
+                reasoning_result = self._reasoning_decoder.decode(completion)
+                if reasoning_result:
+                    logger.debug(f"Reasoning result:\n{reasoning_result}")
+                    completion = reasoning_result.get("content")
+                    reasoning = reasoning_result.get("reasoning") or None
+            else:
+                reasoning = None
+
             if request.tools:
                 message = self._chat_tokenizer.decode(completion)
             else:
-                message = ChatMessage(role=Role.ASSISTANT, content=completion)
+                message = ChatMessage(
+                    role=Role.ASSISTANT,
+                    content=completion,
+                    reasoning=reasoning,
+                )
 
             cached_tokens = self._prompt_cache_tokens_count
             logger.debug(f"Generate response with {cached_tokens} cached tokens")
@@ -386,6 +408,32 @@ class MLXModel(BaseTextModel):
             for result in self._stream_generate(request=request):
                 created = int(time.time())
                 completion += result.text
+
+                message = None
+                enable_thinking = self._reasoning_decoder.enable_thinking
+                if enable_thinking:
+                    reasoning_result = self._reasoning_decoder.stream_decode(
+                        result.text
+                    )
+                    if reasoning_result:
+                        logger.debug(f"Reasoning result:\n{reasoning_result}")
+                        delta_content = reasoning_result.get("delta_content")
+                        delta_reasoning = (
+                            reasoning_result.get("delta_reasoning") or None
+                        )
+                        if delta_content:
+                            message = ChatMessage(
+                                role=Role.ASSISTANT,
+                                content=delta_content or result.text,
+                            )
+                        elif delta_reasoning:
+                            message = ChatMessage(
+                                role=Role.ASSISTANT, reasoning=delta_reasoning
+                            )
+
+                if message is None:
+                    message = ChatMessage(role=Role.ASSISTANT, content=result.text)
+
                 yield ChatCompletionChunk(
                     id=chat_id,
                     created=created,
@@ -393,7 +441,7 @@ class MLXModel(BaseTextModel):
                     choices=[
                         ChatCompletionChunkChoice(
                             index=0,
-                            delta=ChatMessage(role=Role.ASSISTANT, content=result.text),
+                            delta=message,
                             finish_reason=result.finish_reason,
                             logprobs=result.logprobs,
                         )
