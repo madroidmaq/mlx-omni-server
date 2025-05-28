@@ -4,7 +4,6 @@ from typing import Any, Dict, Generator, List, Optional
 
 import mlx.core as mx
 import mlx.nn as nn
-from humanfriendly.terminal import message
 from mlx_lm.generate import GenerationResponse, stream_generate
 from mlx_lm.sample_utils import make_logits_processors, make_sampler
 from mlx_lm.tokenizer_utils import TokenizerWrapper
@@ -171,8 +170,12 @@ class MLXModel(BaseTextModel):
 
         # Prepare sampler parameters
         sampler_kwargs = {
-            "temp": request.temperature or self._default_temperature,
-            "top_p": request.top_p or self._default_top_p,
+            "temp": (
+                self._default_temperature
+                if request.temperature is None
+                else request.temperature
+            ),
+            "top_p": (self._default_top_p if request.top_p is None else request.top_p),
             "min_p": 0.0,
             "min_tokens_to_keep": 1,
             "top_k": self._default_top_k,
@@ -338,6 +341,7 @@ class MLXModel(BaseTextModel):
                 raise RuntimeError("No tokens generated")
 
             logger.debug(f"Model Response:\n{completion}")
+            reasoning: str | None = None  # avoid UnboundLocalError
             enable_thinking = self._reasoning_decoder.enable_thinking
             if enable_thinking:
                 reasoning_result = self._reasoning_decoder.decode(completion)
@@ -345,8 +349,6 @@ class MLXModel(BaseTextModel):
                     logger.debug(f"Reasoning result:\n{reasoning_result}")
                     completion = reasoning_result.get("content")
                     reasoning = reasoning_result.get("reasoning") or None
-            else:
-                reasoning = None
 
             if request.tools:
                 message = self._chat_tokenizer.decode(completion)

@@ -9,13 +9,13 @@ class TokensDecoder(ABC):
     """Base class for tokens decoders."""
 
     @abstractmethod
-    def decode(self, tokens: List[int]) -> Optional[Dict[str, Any]]:
+    def decode(self, text: str) -> Optional[Dict[str, Any]]:
         """Parse tool calls from model output."""
         pass
 
-    def stream_decode(self, tokens: List[int]) -> Optional[List[Dict[str, Any]]]:
+    def stream_decode(self, text: str) -> Optional[Dict[str, Any]]:
         """Parse tool calls from model output."""
-        return [self.decode(tokens)]
+        return self.decode(text)
 
 
 class ReasoningDecoder(TokensDecoder):

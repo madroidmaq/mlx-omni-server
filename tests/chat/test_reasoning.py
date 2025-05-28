@@ -11,17 +11,6 @@ from mlx_omni_server.main import app
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-import logging
-
-import pytest
-from fastapi.testclient import TestClient
-from openai import OpenAI
-
-from mlx_omni_server.main import app
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 
 @pytest.fixture
 def client():
