@@ -214,12 +214,13 @@ class MLXModel(BaseTextModel):
 
         # Process prompt cache
         tokenized_prompt = tokenizer.encode(prompt)
-        processed_prompt = self._prompt_cache.get_prompt_cache(
-            self._model_id, self._model, tokenized_prompt
+        processed_prompt, cached_count = self._prompt_cache.get_prompt_cache(
+            self._model_cache, tokenized_prompt
         )
         generate_kwargs["prompt_cache"] = self._prompt_cache.cache
+        self._prompt_cache_tokens_count = cached_count
         logger.debug(
-            f"Using {self._prompt_cache.cached_token_count} cached tokens out of {len(tokenized_prompt)} total tokens"
+            f"Using {self._prompt_cache_tokens_count} cached tokens out of {len(tokenized_prompt)} total tokens"
         )
 
         # Setup stop tokens checker if needed
@@ -322,10 +323,6 @@ class MLXModel(BaseTextModel):
                     f"generation tokens: {response.generation_tokens}, tps: {response.generation_tps}"
                 )
 
-            self._prompt_cache_tokens_count = self._prompt_cache.cached_token_count
-            logger.debug(
-                f"The generation is completed, with a total of {self._prompt_cache_tokens_count} tokens cached."
-            )
             self._prompt_cache.extend_completion_cache(current_tokens)
         except Exception as e:
             logger.error(f"Error during stream generation: {str(e)}", exc_info=True)

@@ -14,6 +14,8 @@ from mlx_lm.models.cache import (
     trim_prompt_cache,
 )
 
+from mlx_omni_server.chat.mlx.model_types import MlxModelCache
+
 from ...utils.logger import logger
 
 
@@ -57,36 +59,49 @@ class PromptCache:
     tokens: List[int] = field(default_factory=list)
     cache: List[Any] = field(default_factory=list)
     model_key: str = ""
-    cached_token_count: int = 0
 
     def extend_completion_cache(self, completion_tokens):
         self.tokens.extend(completion_tokens)
-        self.cached_token_count += len(completion_tokens)
 
-    def reset_prompt_cache(self, current_model_id, current_model, prompt):
+    def reset_prompt_cache(self, model_cache: MlxModelCache, prompt):
         logger.debug("*** Resetting cache. ***")
-        self.model_key = current_model_id
-        self.cache = make_prompt_cache(current_model)
-        self.cached_token_count = 0
+        self.model_key = model_cache.model_id_obj.model_id
+        self.cache = make_prompt_cache(model_cache.model)
 
-        # TODO: Add support for draft model
-        # if self.model_provider.draft_model is not None:
-        #     self.cache += make_prompt_cache(
-        #         self.model_provider.draft_model
-        #     )
+        if model_cache.draft_model is not None:
+            self.cache += make_prompt_cache(model_cache.draft_model)
+
         self.tokens = list(prompt)  # Cache the new prompt fully
 
-    def get_prompt_cache(self, current_model_id, current_model, prompt):
+    def get_prompt_cache(self, model_cache, prompt):
+        """
+        Determines the portion of the prompt that needs processing by comparing
+        it to the cached prompt and attempting to reuse the common prefix.
+
+        This function updates the internal prompt cache state (tokens and model cache)
+        based on the comparison. If a common prefix exists, it attempts to trim
+        the model cache (if supported) to match the common prefix length, avoiding
+        recomputation.
+
+        Args:
+            prompt (List[int]): The tokenized new prompt.
+
+        Returns:
+            List[int]: The suffix of the prompt that actually needs to be processed
+                       by the model. This will be the full prompt if the cache is
+                       reset or cannot be effectively used.
+        """
         cache_len = len(self.tokens)
         prompt_len = len(prompt)
         com_prefix_len = common_prefix_len(self.tokens, prompt)
+        prompt_cached_tokens = 0
 
         # Leave at least one token in the prompt
         com_prefix_len = min(com_prefix_len, len(prompt) - 1)
 
         # Condition 1: Model changed or no common prefix at all. Reset cache.
-        if self.model_key != current_model_id or com_prefix_len == 0:
-            self.reset_prompt_cache(current_model_id, current_model, prompt)
+        if self.model_key != model_cache.model_id_obj.model_id or com_prefix_len == 0:
+            self.reset_prompt_cache(model_cache, prompt)
 
         # Condition 2: Common prefix exists and matches cache length. Process suffix.
         elif com_prefix_len == cache_len:
@@ -95,6 +110,7 @@ class PromptCache:
             )
             prompt = prompt[com_prefix_len:]
             self.tokens.extend(prompt)
+            prompt_cached_tokens = com_prefix_len
 
         # Condition 3: Common prefix exists but is shorter than cache length. Attempt trim.
         elif com_prefix_len < cache_len:
@@ -109,17 +125,17 @@ class PromptCache:
                 self.tokens = self.tokens[:com_prefix_len]
                 prompt = prompt[com_prefix_len:]
                 self.tokens.extend(prompt)
+                prompt_cached_tokens = com_prefix_len
             else:
                 logger.debug("    Cache cannot be trimmed. Resetting cache.")
-                self.reset_prompt_cache(current_model_id, current_model, prompt)
+                self.reset_prompt_cache(model_cache, prompt)
 
         # This case should logically not be reached if com_prefix_len <= cache_len
         else:
             logger.error(
                 f"Unexpected cache state: com_prefix_len ({com_prefix_len}) > cache_len ({cache_len}). Resetting cache."
             )
-            self.reset_prompt_cache(current_model_id, current_model, prompt)
+            self.reset_prompt_cache(model_cache, prompt)
 
-        self.cached_token_count = len(self.tokens) - len(prompt)
         logger.debug(f"Returning {len(prompt)} tokens for processing.")
-        return prompt
+        return prompt, prompt_cached_tokens
