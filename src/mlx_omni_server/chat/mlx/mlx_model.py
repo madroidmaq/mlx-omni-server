@@ -20,6 +20,7 @@ from ..schema import (
     Role,
 )
 from ..text_models import BaseTextModel, GenerateResult, GenerationParams
+from .model_types import MlxModelCache, ModelId
 from .outlines_logits_processor import OutlinesLogitsProcessor
 from .prompt_cache import PromptCache
 from .stop_tokens_checker import StopTokensChecker
@@ -32,23 +33,24 @@ class MLXModel(BaseTextModel):
 
     def __init__(
         self,
-        model_id: str,
-        model: nn.Module,
+        model_cache,
         tokenizer: ChatTokenizer,
-        draft_model=None,
     ):
-        self._model_id = model_id
-        self._model: nn.Module = model
-        self._draft_model = draft_model
+        """Initialize MLXModel with model cache object.
+
+        Args:
+            model_cache: MlxModelCache object containing models and tokenizers
+            tokenizer: Chat tokenizer for processing prompts
+            config: Optional model configuration dictionary
+        """
+        self._model_cache = model_cache
+        self._model_id = model_cache.model_id_obj.model_id
+        self._model = model_cache.model
         self._default_max_tokens = 2048
-        self._default_temperature = 1.0
-        self._default_top_p = 1.0
-        self._default_top_k = -1
         self._chat_tokenizer = tokenizer
         self._prompt_cache = PromptCache()
         self._prompt_cache_tokens_count = 0
         self._reasoning_decoder = ReasoningDecoder(tokenizer)
-        logger.info(f"Initialized MLXModel with model_id: {model_id}")
 
     def _get_generation_params(
         self, request: ChatCompletionRequest
@@ -178,15 +180,11 @@ class MLXModel(BaseTextModel):
 
         # Prepare sampler parameters
         sampler_kwargs = {
-            "temp": (
-                self._default_temperature
-                if request.temperature is None
-                else request.temperature
-            ),
-            "top_p": (self._default_top_p if request.top_p is None else request.top_p),
+            "temp": (1.0 if request.temperature is None else request.temperature),
+            "top_p": (1.0 if request.top_p is None else request.top_p),
             "min_p": 0.0,
             "min_tokens_to_keep": 1,
-            "top_k": self._default_top_k,
+            "top_k": -1,
         } | params.get("sampler_kwargs", {})
 
         logger.debug(f"Sampler kwargs: {sampler_kwargs}")
@@ -270,10 +268,10 @@ class MLXModel(BaseTextModel):
             last_text = ""
 
             for response in stream_generate(
-                model=self._model,
+                model=self._model_cache.model,
                 tokenizer=tokenizer,
                 prompt=processed_prompt,
-                draft_model=self._draft_model,
+                draft_model=self._model_cache.draft_model,
                 **generate_kwargs,
             ):
                 if response.finish_reason is not None:
@@ -315,6 +313,14 @@ class MLXModel(BaseTextModel):
 
                 if should_trim:
                     break
+
+            if response is not None:
+                logger.debug(
+                    f"    prompt tokens: {response.prompt_tokens}, tps: {response.prompt_tps}"
+                )
+                logger.debug(
+                    f"generation tokens: {response.generation_tokens}, tps: {response.generation_tps}"
+                )
 
             self._prompt_cache_tokens_count = self._prompt_cache.cached_token_count
             logger.debug(

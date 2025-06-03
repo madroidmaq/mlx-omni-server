@@ -1,10 +1,11 @@
 import json
+from dataclasses import dataclass
 from typing import Generator, Optional
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .mlx.models import load_model
+from .mlx.models import ModelId, load_model
 from .schema import ChatCompletionRequest, ChatCompletionResponse
 from .text_models import BaseTextModel
 
@@ -42,29 +43,18 @@ async def create_chat_completion(request: ChatCompletionRequest):
     )
 
 
-_last_model_key = None
-_last_text_model = None
-
-
 def _create_text_model(
     model_id: str,
     adapter_path: Optional[str] = None,
     draft_model: Optional[str] = None,
-) -> BaseTextModel | None:
-    global _last_model_key, _last_text_model
+) -> BaseTextModel:
+    """Create a text model based on the model parameters.
 
-    current_key = (model_id, adapter_path, draft_model)
-
-    if current_key == _last_model_key:
-        return _last_text_model
-
-    model = load_model(
-        model_id=model_id,
-        adapter_path=adapter_path,
-        draft_model_id=draft_model,
+    Creates a ModelId object and passes it to load_model function.
+    The caching is handled inside the load_model function.
+    """
+    current_key = ModelId(
+        model_id=model_id, adapter_path=adapter_path, draft_model=draft_model
     )
 
-    # Update cache
-    _last_text_model = model
-    _last_model_key = current_key
-    return model
+    return load_model(current_key)

@@ -1,15 +1,21 @@
-from typing import Optional, Type
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, Tuple, Type
 
+import mlx.nn as nn
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 from mlx_lm.utils import get_model_path, load, load_config
 
 from ...utils.logger import logger
 from ..text_models import BaseTextModel
 from .mlx_model import MLXModel
+from .model_types import MlxModelCache, ModelId
 from .tools.chat_tokenizer import ChatTokenizer
 from .tools.hugging_face import HuggingFaceChatTokenizer
 from .tools.llama3 import Llama3ChatTokenizer
 from .tools.mistral import MistralChatTokenizer
+
+# Initialize global cache object
+_model_cache = None
 
 
 def load_tools_handler(model_type: str, tokenizer: TokenizerWrapper) -> ChatTokenizer:
@@ -26,43 +32,26 @@ def load_tools_handler(model_type: str, tokenizer: TokenizerWrapper) -> ChatToke
     return handler_class(tokenizer)
 
 
-def load_model(
-    model_id: str,
-    adapter_path: Optional[str] = None,
-    draft_model_id: Optional[str] = None,
-) -> BaseTextModel:
-    """Load a model and tokenizer from the given model ID."""
-    model, tokenizer = load(
-        model_id,
-        tokenizer_config={"trust_remote_code": True},
-        adapter_path=adapter_path,
-    )
+def load_model(model_id: ModelId) -> BaseTextModel:
+    """Load the model and return a BaseTextModel instance.
 
-    if draft_model_id:
-        draft_model, draft_tokenizer = load(
-            draft_model_id,
-            tokenizer_config={"trust_remote_code": True},
-        )
-        if draft_tokenizer.vocab_size != tokenizer.vocab_size:
-            logger.warn(
-                f"Draft model({draft_model}) tokenizer does not match model tokenizer."
-            )
+    Args:
+        model_id: ModelId object containing model identification parameters
 
-    model_path = get_model_path(model_id)
+    Returns:
+        Initialized BaseTextModel instance
+    """
+    global _model_cache
+
+    # Check if a new model needs to be loaded
+    if _model_cache is None or _model_cache.model_id_obj != model_id:
+        # Cache miss, create a new cache object
+        _model_cache = MlxModelCache(model_id)
+
+    # Load configuration and create chat tokenizer
+    model_path = get_model_path(model_id.model_id)
     config = load_config(model_path)
+    chat_tokenizer = load_tools_handler(config["model_type"], _model_cache.tokenizer)
 
-    chat_tokenizer = load_tools_handler(config["model_type"], tokenizer)
-
-    if draft_model_id:
-        logger.info(
-            f"Initialized MLXModel with model_id: {model_id}, and with draft model: {draft_model_id}"
-        )
-    else:
-        logger.info(f"Initialized MLXModel with model_id: {model_id}")
-
-    return MLXModel(
-        model_id=model_id,
-        model=model,
-        tokenizer=chat_tokenizer,
-        draft_model=None if draft_model_id is None else draft_model,
-    )
+    # Create and return model instance
+    return MLXModel(model_cache=_model_cache, tokenizer=chat_tokenizer)
