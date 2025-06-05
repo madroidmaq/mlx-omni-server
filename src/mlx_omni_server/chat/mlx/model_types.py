@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from mlx_lm.utils import get_model_path, load, load_config
+from mlx_lm.utils import load
 
 from ...utils.logger import logger
 
