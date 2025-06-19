@@ -130,7 +130,7 @@ class MLXModel(BaseTextModel):
         if top_k is not None:
             # Get indices of top_k tokens
             top_indices = mx.argpartition(-current_logprobs, kth=top_k - 1)[:top_k]
-            top_probs = current_logprobs[top_indices]
+            top_probs = mx.clip(current_logprobs[top_indices], a_min=-100, a_max=None)
 
             # Create detailed token information for each top token
             for idx, logprob in zip(top_indices.tolist(), top_probs.tolist()):
