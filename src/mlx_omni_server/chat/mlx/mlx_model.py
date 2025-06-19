@@ -115,7 +115,9 @@ class MLXModel(BaseTextModel):
 
         # Get current token info
         token_str = tokenizer.decode([current_token])
-        token_logprob = current_logprobs[current_token].item()
+        token_logprob = mx.clip(
+            current_logprobs[current_token], a_min=-100, a_max=None
+        ).item()
         token_bytes = token_str.encode("utf-8")
 
         # Base token info
