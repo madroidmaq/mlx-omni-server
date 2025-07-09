@@ -1,6 +1,6 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_serializer
 
 
 class Model(BaseModel):
@@ -12,9 +12,22 @@ class Model(BaseModel):
         ..., description="Unix timestamp of when the model was created"
     )
     owned_by: str = Field(..., description="Organization that owns the model")
-    config: Dict[str, Any] = Field(
-        default_factory=dict, description="Model configuration from config.json"
+    details: Optional[Dict[str, Any]] = Field(
+        default=None, description="Full model configuration (if details are requested)"
     )
+
+    @model_serializer
+    def serialize_model(self):
+        """Custom serializer to exclude None details field"""
+        data = {
+            "id": self.id,
+            "object": self.object,
+            "created": self.created,
+            "owned_by": self.owned_by,
+        }
+        if self.details is not None:
+            data["details"] = self.details
+        return data
 
 
 class ModelList(BaseModel):

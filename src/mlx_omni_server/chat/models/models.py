@@ -24,32 +24,19 @@ def handle_model_error(e: Exception) -> None:
 
 @router.get("/models", response_model=ModelList)
 @router.get("/v1/models", response_model=ModelList)
-async def list_models() -> ModelList:
-    """
-    Lists the currently available models, and provides basic information about each one
-    such as the owner and availability.
-    """
-    try:
-        return models_service.list_models()
-    except Exception as e:
-        handle_model_error(e)
+async def list_models(include_details: bool = False) -> ModelList:
+    """List all available models"""
+    return models_service.list_models(include_details)
 
 
 @router.get("/models/{model_id:path}", response_model=Model)
 @router.get("/v1/models/{model_id:path}", response_model=Model)
-async def get_model(request: Request) -> Model:
-    """
-    Retrieves a model instance, providing basic information about the model such as
-    the owner and permissioning.
-    """
-    try:
-        model_id = extract_model_id_from_path(request)
-        model = models_service.get_model(model_id)
-        if model is None:
-            raise ValueError(f"Model '{model_id}' not found")
-        return model
-    except Exception as e:
-        handle_model_error(e)
+async def get_model(model_id: str, include_details: bool = False) -> Model:
+    """Get information about a specific model"""
+    model = models_service.get_model(model_id, include_details)
+    if not model:
+        raise HTTPException(status_code=404, detail="Model not found")
+    return model
 
 
 @router.delete("/models/{model_id:path}", response_model=ModelDeletion)

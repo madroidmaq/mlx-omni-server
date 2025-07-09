@@ -168,31 +168,36 @@ class ModelsService:
         """Extract owner from model ID (part before the /)"""
         return model_id.split("/")[0] if "/" in model_id else model_id
 
-    def list_models(self) -> ModelList:
+    def list_models(self, include_details: bool = False) -> ModelList:
         """List all available models"""
         models = []
         for repo_info, config_data in self.available_models:
-            models.append(
-                Model(
-                    id=repo_info.repo_id,
-                    created=int(repo_info.last_modified),
-                    owned_by=self._get_model_owner(repo_info.repo_id),
-                    config=config_data,
-                )
-            )
+            model_kwargs = {
+                "id": repo_info.repo_id,
+                "created": int(repo_info.last_modified),
+                "owned_by": self._get_model_owner(repo_info.repo_id),
+            }
+            if include_details:
+                model_kwargs["details"] = config_data
+            model_instance = Model(**model_kwargs)
+            models.append(model_instance)
         return ModelList(data=models)
 
-    def get_model(self, model_id: str) -> Optional[Model]:
+    def get_model(
+        self, model_id: str, include_details: bool = False
+    ) -> Optional[Model]:
         """Get information about a specific model"""
         model_info = self.scanner.get_model_info(model_id)
         if model_info:
             repo_info, config_data = model_info
-            return Model(
-                id=model_id,
-                created=int(repo_info.last_modified),
-                owned_by=self._get_model_owner(model_id),
-                config=config_data,
-            )
+            model_kwargs = {
+                "id": model_id,
+                "created": int(repo_info.last_modified),
+                "owned_by": self._get_model_owner(model_id),
+            }
+            if include_details:
+                model_kwargs["details"] = config_data
+            return Model(**model_kwargs)
         return None
 
     def delete_model(self, model_id: str) -> ModelDeletion:
