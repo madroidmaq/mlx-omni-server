@@ -14,7 +14,15 @@ class OutlinesLogitsProcessor:
     processed_token_count: int = 0
 
     def __init__(self, tokenizer: TokenizerWrapper, response_format: ResponseFormat):
-        json_schema = response_format.json_schema.schema_def
+        # Handle different response format types
+        if hasattr(response_format, "json_schema") and response_format.json_schema:
+            json_schema = response_format.json_schema.schema_def
+        elif hasattr(response_format, "schema") and response_format.schema:
+            json_schema = response_format.schema
+        else:
+            # Fallback for direct schema dict
+            json_schema = response_format
+
         self.logits_processor = JSONLogitsProcessor(
             json_schema,
             TransformerTokenizer(tokenizer._tokenizer),

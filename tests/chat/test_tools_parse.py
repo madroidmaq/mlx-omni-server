@@ -1,6 +1,7 @@
 import unittest
 
-from mlx_omni_server.chat.mlx.tools.utils import parse_tool_calls
+from mlx_omni_server.chat.mlx.core_types import ToolCall
+from mlx_omni_server.chat.mlx.tools.utils import extract_tools
 
 
 class TestToolsParse(unittest.TestCase):
@@ -38,14 +39,22 @@ This JSON represents a function call to `get_current_weather` with the location 
         '[TOOL_CALLS] [{"name": "get_current_weather", "arguments": {"location": "Boston, MA"}}]',
     ]
 
-    def test_decode_invalid_json(self):
-        # Test invalid JSON format
+    def test_decode_tool_calls(self):
+        # Test tool call extraction
 
         for text in self.examples:
-            tools = parse_tool_calls(text)
+            tools = extract_tools(text)
 
             self.assertIsNotNone(tools)
             print(f"tools: {tools}")
 
             tool_call = tools[0]
-            self.assertIsNotNone(tool_call.function.name)
+            self.assertIsNotNone(tool_call.name)
+            self.assertIsNotNone(tool_call.arguments)
+
+    def test_decode_no_tool_calls(self):
+        # Test when no tool calls are found
+        text = "This is a regular message without any tool calls"
+        tools = extract_tools(text)
+
+        self.assertIsNone(tools)  # Should return None when no tool calls found

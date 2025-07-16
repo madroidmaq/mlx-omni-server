@@ -6,17 +6,9 @@ from mlx_lm.tokenizer_utils import TokenizerWrapper
 
 from mlx_omni_server.utils.logger import logger
 
-from ...schema import (
-    ChatMessage,
-    FunctionCall,
-    Role,
-    SpecificToolChoice,
-    Tool,
-    ToolCall,
-    ToolChoiceType,
-)
+from ...schema import SpecificToolChoice, Tool, ToolChoiceType
+from ..core_types import ToolCall as CoreToolCall
 from .chat_tokenizer import ChatTokenizer
-from .utils import parse_tool_calls
 
 
 class Llama3ChatTokenizer(ChatTokenizer):
@@ -29,12 +21,12 @@ class Llama3ChatTokenizer(ChatTokenizer):
         self.strict_mode = False
         self.pre_fill_tools_prompt = ""
 
-    def decode_stream(self, text: str, delta_text: str) -> Optional[List[ToolCall]]:
+    def decode_stream(self, text: str) -> Optional[List[CoreToolCall]]:
         pass
 
     def encode(
         self,
-        messages: List[ChatMessage],
+        messages: List[dict],
         tools: Optional[List[Tool]] = None,
         tool_choice: Optional[ToolChoiceType] = None,
         **kwargs,
@@ -52,7 +44,7 @@ class Llama3ChatTokenizer(ChatTokenizer):
 
         return prompt + self.pre_fill_tools_prompt
 
-    def _parse_strict_tools(self, text: str) -> Optional[List[ToolCall]]:
+    def _parse_strict_tools(self, text: str) -> Optional[List[CoreToolCall]]:
         tool_calls = []
         logger.debug(f"_parse_strict_tools: {text}")
 
@@ -65,20 +57,13 @@ class Llama3ChatTokenizer(ChatTokenizer):
                 if isinstance(tool_data, dict) and "name" in tool_data:
                     # Get arguments and ensure they're a JSON string
                     args = tool_data.get("arguments", tool_data.get("parameters", {}))
-                    if isinstance(args, str):
-                        # Already a JSON string
-                        arguments = args
-                    else:
-                        # Convert dict to JSON string
-                        arguments = json.dumps(args)
 
+                    # Create CoreToolCall object directly
                     tool_calls.append(
-                        ToolCall(
+                        CoreToolCall(
                             id=f"call_{uuid.uuid4().hex[:8]}",
-                            function=FunctionCall(
-                                name=tool_data["name"],
-                                arguments=arguments,
-                            ),
+                            name=tool_data["name"],
+                            arguments=args,
                         )
                     )
             except (json.JSONDecodeError, KeyError, ValueError) as e:
@@ -87,20 +72,23 @@ class Llama3ChatTokenizer(ChatTokenizer):
 
         return tool_calls if tool_calls else None
 
-    def decode(self, text: str) -> Optional[ChatMessage]:
-        """
-        Parse tool calls from model output.
-        The model outputs function calls in JSON format with 'name' and optional 'arguments' fields.
+    def decode(self, text: str) -> Optional[List[CoreToolCall]]:
+        """Parse tool calls from model output.
+
+        Args:
+            text: Generated text that may contain tool calls
+
+        Returns:
+            List of platform-independent ToolCall objects or None if no tool calls found
         """
         response = self.pre_fill_tools_prompt + text
 
         if self.strict_mode:
             tool_calls = self._parse_strict_tools(response)
         else:
-            tool_calls = parse_tool_calls(response)
+            # Use extract_tools for non-strict mode parsing
+            from .utils import extract_tools
 
-        return ChatMessage(
-            role=Role.ASSISTANT,
-            content=None if tool_calls else text,
-            tool_calls=tool_calls,
-        )
+            tool_calls = extract_tools(response)
+
+        return tool_calls

@@ -4,9 +4,9 @@ from unittest.mock import Mock
 
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 
+from mlx_omni_server.chat.mlx.core_types import ToolCall
 from mlx_omni_server.chat.mlx.tools.llama3 import Llama3ChatTokenizer
 from mlx_omni_server.chat.mlx.tools.mistral import MistralChatTokenizer
-from mlx_omni_server.chat.schema import Role
 
 
 class TestMistralChatTokenizer(unittest.TestCase):
@@ -21,16 +21,11 @@ class TestMistralChatTokenizer(unittest.TestCase):
         result = self.mistral_tokenizer.decode(text)
 
         self.assertIsNotNone(result)
-        self.assertEqual(result.role, Role.ASSISTANT)
-        self.assertIsNone(result.content)
-        self.assertIsNotNone(result.tool_calls)
-        self.assertEqual(len(result.tool_calls), 1)
+        self.assertEqual(len(result), 1)
 
-        tool_call = result.tool_calls[0]
-        self.assertEqual(tool_call.function.name, "get_current_weather")
-        self.assertEqual(
-            json.loads(tool_call.function.arguments), {"location": "Boston, MA"}
-        )
+        tool_call = result[0]
+        self.assertEqual(tool_call.name, "get_current_weather")
+        self.assertEqual(tool_call.arguments, {"location": "Boston, MA"})
 
     def test_mistral_decode_multiple_tool_calls(self):
         # Test multiple tool calls
@@ -39,46 +34,31 @@ class TestMistralChatTokenizer(unittest.TestCase):
         result = self.mistral_tokenizer.decode(text)
 
         self.assertIsNotNone(result)
-        self.assertEqual(result.role, Role.ASSISTANT)
-        self.assertIsNone(result.content)
-        self.assertIsNotNone(result.tool_calls)
-        self.assertEqual(len(result.tool_calls), 2)
+        self.assertEqual(len(result), 2)
 
         # Check first tool call
-        tool_call1 = result.tool_calls[0]
-        self.assertEqual(tool_call1.function.name, "get_current_weather")
-        self.assertEqual(
-            json.loads(tool_call1.function.arguments), {"location": "Boston, MA"}
-        )
+        tool_call1 = result[0]
+        self.assertEqual(tool_call1.name, "get_current_weather")
+        self.assertEqual(tool_call1.arguments, {"location": "Boston, MA"})
 
         # Check second tool call
-        tool_call2 = result.tool_calls[1]
-        self.assertEqual(tool_call2.function.name, "get_forecast")
-        self.assertEqual(
-            json.loads(tool_call2.function.arguments), {"location": "New York, NY"}
-        )
+        tool_call2 = result[1]
+        self.assertEqual(tool_call2.name, "get_forecast")
+        self.assertEqual(tool_call2.arguments, {"location": "New York, NY"})
 
     def test_mistral_decode_invalid_json(self):
         # Test invalid JSON format
         text = '[TOOL_CALLS] [{"name": "get_current_weather", "arguments": {"location": "Boston, MA"}'  # Missing closing bracket
         result = self.mistral_tokenizer.decode(text)
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result.role, Role.ASSISTANT)
-        self.assertEqual(result.content, text)  # Should return original text
-        self.assertIsNone(result.tool_calls)
+        self.assertIsNone(result)  # Should return None for invalid JSON
 
     def test_mistral_decode_invalid_tool_call(self):
         # Test invalid tool call format (missing name)
         text = '[TOOL_CALLS] [{"arguments": {"location": "Boston, MA"}}]'
         result = self.mistral_tokenizer.decode(text)
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result.role, Role.ASSISTANT)
-        self.assertEqual(
-            result.content, text
-        )  # Should return original text for invalid format
-        self.assertIsNone(result.tool_calls)
+        self.assertIsNone(result)  # Should return None for invalid format
 
     def test_mistral_decode_mixed_valid_invalid_calls(self):
         # Test mixture of valid and invalid tool calls
@@ -88,24 +68,18 @@ class TestMistralChatTokenizer(unittest.TestCase):
         result = self.mistral_tokenizer.decode(text)
 
         self.assertIsNotNone(result)
-        self.assertEqual(result.role, Role.ASSISTANT)
-        self.assertIsNone(result.content)
-        self.assertIsNotNone(result.tool_calls)
-        self.assertEqual(len(result.tool_calls), 2)  # Should only have valid calls
+        self.assertEqual(len(result), 2)  # Should only have valid calls
 
         # Check valid tool calls
-        self.assertEqual(result.tool_calls[0].function.name, "get_current_weather")
-        self.assertEqual(result.tool_calls[1].function.name, "get_forecast")
+        self.assertEqual(result[0].name, "get_current_weather")
+        self.assertEqual(result[1].name, "get_forecast")
 
     def test_mistral_decode_non_tool_call(self):
         # Test regular text without tool call
         text = "This is a regular message"
         result = self.mistral_tokenizer.decode(text)
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result.role, Role.ASSISTANT)
-        self.assertEqual(result.content, text)
-        self.assertIsNone(result.tool_calls)
+        self.assertIsNone(result)  # Should return None for non-tool call text
 
 
 if __name__ == "__main__":

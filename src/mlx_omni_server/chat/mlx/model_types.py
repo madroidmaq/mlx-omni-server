@@ -21,7 +21,7 @@ def load_tools_handler(model_type: str, tokenizer: TokenizerWrapper) -> ChatToke
         "qwen2": HuggingFaceChatTokenizer,
     }
 
-    # Get handler class based on model ID or use Llama handler as default
+    # Get handler class based on model ID or use HuggingFace handler as default
     handler_class = handlers.get(model_type, HuggingFaceChatTokenizer)
     return handler_class(tokenizer)
 

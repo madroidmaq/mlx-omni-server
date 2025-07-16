@@ -1,13 +1,21 @@
 import json
 import re
 import uuid
-from typing import Optional
+from typing import List, Optional
 
 from ....utils.logger import logger
-from ...schema import FunctionCall, ToolCall
+from ..core_types import ToolCall as CoreToolCall
 
 
-def _extract_tools(text: str):
+def extract_tools(text: str) -> Optional[List[CoreToolCall]]:
+    """Extract tool calls from text and return CoreToolCall objects directly.
+
+    Args:
+        text: Text containing tool calls
+
+    Returns:
+        List of CoreToolCall objects if tool calls are found, None otherwise
+    """
     results = []
 
     pattern = (
@@ -30,42 +38,47 @@ def _extract_tools(text: str):
     matches_list = list(matches)
     for i, match in enumerate(matches_list):
         name, args_str = match.groups()
-        # try:
-        #     arguments = json.loads(args_str)
-        #     print("Successfully parsed arguments as JSON")
-        # except json.JSONDecodeError as e:
-        #     print(f"Failed to parse JSON: {e}")
-        #     arguments = args_str
-        results.append({"name": name, "arguments": args_str})
 
-    return results
+        # Parse arguments from JSON string if provided
+        try:
+            arguments = json.loads(args_str) if args_str else {}
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to parse tool arguments as JSON: {args_str}")
+            arguments = {}
+
+        # Create CoreToolCall object directly
+        tool_call = CoreToolCall(
+            id=f"call_{uuid.uuid4().hex[:8]}", name=name, arguments=arguments
+        )
+        results.append(tool_call)
+
+    return results if results else None
 
 
-def parse_tool_calls(text: str) -> Optional[list[ToolCall]]:
-    """
-    Parse tool calls from text using regex to find JSON patterns containing name and arguments.
-    Returns a list of ToolCall objects or None if no valid tool calls are found.
-    """
-    try:
-        tool_calls = _extract_tools(text)
-        if tool_calls:
-            results = []
-            for call in tool_calls:
-                # Process arguments
-                args = call["arguments"]
-                arguments = args if isinstance(args, str) else json.dumps(args)
-
-                tool_call = ToolCall(
-                    id=f"call_{uuid.uuid4().hex[:8]}",
-                    function=FunctionCall(
-                        name=call["name"],
-                        arguments=arguments,
-                    ),
-                )
-                results.append(tool_call)
-            return results
-
-        return None
-    except Exception as e:
-        logger.error(f"Error during regex matching: {str(e)}")
-        return None
+# def parse_tool_calls(text: str) -> Optional[list[ToolCall]]:
+#     """
+#     Parse tool calls from text using regex to find JSON patterns containing name and arguments.
+#     Returns a list of ToolCall objects or None if no valid tool calls are found.
+#
+#     Note: This function returns the original schema.ToolCall type for backward compatibility.
+#     """
+#     try:
+#         core_tool_calls = extract_tools(text)
+#         if core_tool_calls:
+#             results = []
+#             for core_call in core_tool_calls:
+#                 # Convert CoreToolCall to original schema.ToolCall
+#                 tool_call = ToolCall(
+#                     id=core_call.id,
+#                     function=FunctionCall(
+#                         name=core_call.name,
+#                         arguments=json.dumps(core_call.arguments),
+#                     ),
+#                 )
+#                 results.append(tool_call)
+#             return results
+#
+#         return None
+#     except Exception as e:
+#         logger.error(f"Error during regex matching: {str(e)}")
+#         return None

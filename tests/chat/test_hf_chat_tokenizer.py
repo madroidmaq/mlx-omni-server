@@ -4,8 +4,8 @@ from unittest.mock import Mock
 
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 
+from mlx_omni_server.chat.mlx.core_types import ToolCall
 from mlx_omni_server.chat.mlx.tools.hugging_face import HuggingFaceChatTokenizer
-from mlx_omni_server.chat.schema import Role
 
 
 class TestHuggingFaceChatTokenizer(unittest.TestCase):
@@ -21,15 +21,12 @@ class TestHuggingFaceChatTokenizer(unittest.TestCase):
         result = self.hf_tokenizer.decode(text)
 
         self.assertIsNotNone(result)
-        self.assertEqual(result.role, Role.ASSISTANT)
-        self.assertIsNone(result.content)
-        self.assertIsNotNone(result.tool_calls)
-        self.assertEqual(len(result.tool_calls), 1)
+        self.assertEqual(len(result), 1)
 
-        tool_call = result.tool_calls[0]
-        self.assertEqual(tool_call.function.name, "get_current_weather")
+        tool_call = result[0]
+        self.assertEqual(tool_call.name, "get_current_weather")
         self.assertEqual(
-            json.loads(tool_call.function.arguments),
+            tool_call.arguments,
             {"location": "Boston, MA", "unit": "fahrenheit"},
         )
 
@@ -40,22 +37,14 @@ class TestHuggingFaceChatTokenizer(unittest.TestCase):
 </tool_call>"""
         result = self.hf_tokenizer.decode(text)
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result.role, Role.ASSISTANT)
-        self.assertEqual(
-            result.content, text
-        )  # Should return original text for invalid format
-        self.assertIsNone(result.tool_calls)
+        self.assertIsNone(result)  # Should return None for invalid format
 
     def test_decode_non_tool_call(self):
         # Test non-tool call text
         text = "This is a regular message without any tool calls."
         result = self.hf_tokenizer.decode(text)
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result.role, Role.ASSISTANT)
-        self.assertEqual(result.content, text)
-        self.assertIsNone(result.tool_calls)
+        self.assertIsNone(result)  # Should return None for non-tool call text
 
     def test_loose_mode_with_response_tag(self):
         # 启用宽松模式
@@ -68,22 +57,13 @@ class TestHuggingFaceChatTokenizer(unittest.TestCase):
           "arguments": {"location": "Boston, MA", "unit": "fahrenheit"}
         }
         </response>"""
-
-        #         text = """<function-calls>
-        #   {"name": "get_current_weather", "arguments": {"location": "Boston, MA", "unit": "celsius"}}
-        # </function-calls>
-        #         """
         result = self.hf_tokenizer.decode(text)
-        print(f"=======\nresult: \n{result}")
 
         self.assertIsNotNone(result)
-        self.assertEqual(result.role, Role.ASSISTANT)
-        self.assertIsNone(result.content)
-        self.assertIsNotNone(result.tool_calls)
-        self.assertEqual(len(result.tool_calls), 1)
-        self.assertEqual(result.tool_calls[0].function.name, "get_current_weather")
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].name, "get_current_weather")
         self.assertEqual(
-            json.loads(result.tool_calls[0].function.arguments),
+            result[0].arguments,
             {"location": "Boston, MA", "unit": "fahrenheit"},
         )
 
@@ -96,16 +76,12 @@ class TestHuggingFaceChatTokenizer(unittest.TestCase):
           {"name": "get_current_weather", "arguments": {"location": "Boston, MA", "unit": "celsius"}}
         </function-calls>"""
         result = self.hf_tokenizer.decode(text)
-        print(f"=======\nresult: \n{result}")
 
         self.assertIsNotNone(result)
-        self.assertEqual(result.role, Role.ASSISTANT)
-        self.assertIsNone(result.content)
-        self.assertIsNotNone(result.tool_calls)
-        self.assertEqual(len(result.tool_calls), 1)
-        self.assertEqual(result.tool_calls[0].function.name, "get_current_weather")
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].name, "get_current_weather")
         self.assertEqual(
-            json.loads(result.tool_calls[0].function.arguments),
+            result[0].arguments,
             {"location": "Boston, MA", "unit": "celsius"},
         )
 
@@ -120,9 +96,8 @@ class TestHuggingFaceChatTokenizer(unittest.TestCase):
         result = self.hf_tokenizer.decode(text)
 
         self.assertIsNotNone(result)
-        self.assertIsNotNone(result.tool_calls)
-        self.assertEqual(len(result.tool_calls), 1)
-        self.assertEqual(result.tool_calls[0].function.name, "get_current_weather")
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].name, "get_current_weather")
 
     def test_loose_mode_with_xml_declaration(self):
         # 启用宽松模式
@@ -139,11 +114,10 @@ class TestHuggingFaceChatTokenizer(unittest.TestCase):
         result = self.hf_tokenizer.decode(text)
 
         self.assertIsNotNone(result)
-        self.assertIsNotNone(result.tool_calls)
-        self.assertEqual(len(result.tool_calls), 1)
-        self.assertEqual(result.tool_calls[0].function.name, "get_current_weather")
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].name, "get_current_weather")
         self.assertEqual(
-            json.loads(result.tool_calls[0].function.arguments),
+            result[0].arguments,
             {"location": "Boston, MA", "unit": "celsius"},
         )
 
@@ -160,7 +134,4 @@ class TestHuggingFaceChatTokenizer(unittest.TestCase):
         </response>"""
         result = self.hf_tokenizer.decode(text)
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result.role, Role.ASSISTANT)
-        self.assertEqual(result.content, text)  # 应该返回原始文本
-        self.assertIsNone(result.tool_calls)  # 不应该解析出工具调用
+        self.assertIsNone(result)  # 应该返回 None 表示没有解析出工具调用

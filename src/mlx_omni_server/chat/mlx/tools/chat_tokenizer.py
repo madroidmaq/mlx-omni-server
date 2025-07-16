@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 
-from ...schema import ChatMessage, Role, Tool, ToolCall, ToolChoice, ToolChoiceType
+from ...schema import ToolChoice, ToolChoiceType
+from ..core_types import ToolCall
 
 
 class ChatTokenizer(ABC):
@@ -17,8 +18,8 @@ class ChatTokenizer(ABC):
 
     def encode(
         self,
-        messages: List[ChatMessage],
-        tools: Optional[List[Tool]] = None,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[ToolChoiceType] = None,
         **kwargs,
     ) -> str:
@@ -27,15 +28,15 @@ class ChatTokenizer(ABC):
         This is a common implementation that uses the tokenizer's chat template.
         Subclasses can override this if they need different behavior.
         """
-        schema_tools = None
-        if tools:
-            schema_tools = [tool.model_dump(exclude_none=True) for tool in tools]
+        schema_tools = tools  # tools are already in dict format
 
-        should_prefill = messages[-1].role == Role.ASSISTANT
+        # Check if the last message is from assistant (for prefill)
+        should_prefill = messages[-1].get("role") == "assistant"
 
         conversation = []
         for message in messages:
-            msg_dict = message.model_dump(exclude_none=True)
+            # messages are already in dict format
+            msg_dict = message.copy()  # Make a copy to avoid modifying original
             if isinstance(msg_dict.get("content"), list):
                 msg_dict["content"] = "\n\n".join(
                     item["text"]
@@ -72,10 +73,16 @@ class ChatTokenizer(ABC):
 
     @abstractmethod
     def decode_stream(self, text: str) -> Optional[List[ToolCall]]:
-        """Parse tool calls from model output."""
         pass
 
     @abstractmethod
-    def decode(self, text: str) -> Optional[ChatMessage]:
-        """Parse tool calls from model output."""
+    def decode(self, text: str) -> Optional[List[ToolCall]]:
+        """Parse tool calls from model output.
+
+        Args:
+            text: Generated text that may contain tool calls
+
+        Returns:
+            List of platform-independent ToolCall objects or None if no tool calls found
+        """
         pass
