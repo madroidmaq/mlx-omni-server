@@ -101,10 +101,10 @@ class MLXGenerateConfig:
 class ChatTemplateConfig:
     """Configuration for chat template (passed to tokenizer.apply_chat_template)."""
 
-    # Template-specific parameters
-    template_kwargs: Dict[str, Any] = field(default_factory=dict)
-
     # Reasoning/thinking parameters
-    enable_thinking: bool = False
+    enable_thinking: bool = True
     thinking_budget: Optional[int] = None
     reasoning_effort: Optional[str] = None
+
+    # Template-specific parameters
+    template_kwargs: Dict[str, Any] = field(default_factory=dict)

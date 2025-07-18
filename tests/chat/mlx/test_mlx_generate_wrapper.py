@@ -281,16 +281,12 @@ class TestMLXGenerateWrapper:
             template_config = ChatTemplateConfig(enable_thinking=True)
 
             result = reasoning_wrapper.generate(
-                messages=messages, max_tokens=100, template_config=template_config
+                messages=messages, template_config=template_config
             )
 
             assert isinstance(result, GenerationResult)
             assert len(result.text) > 0
-            # With reasoning model, result.reasoning might contain actual reasoning content
-            print(f"Reasoning model result: {result.reasoning}")
-
         except Exception as e:
-            # Skip test if reasoning model is not available
             import pytest
 
             pytest.skip(f"Reasoning model not available: {e}")

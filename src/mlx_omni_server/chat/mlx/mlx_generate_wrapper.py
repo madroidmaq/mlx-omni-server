@@ -1,5 +1,6 @@
 """MLX Generate Wrapper - Core abstraction layer over mlx-lm."""
 
+from dataclasses import replace
 from typing import Any, Dict, Generator, List, Optional
 
 import mlx.core as mx
@@ -155,7 +156,7 @@ class MLXGenerateWrapper:
 
         # JSON schema
         if generate_config.json_schema is not None:
-            from ..outlines_logits_processor import OutlinesLogitsProcessor
+            from .outlines_logits_processor import OutlinesLogitsProcessor
 
             logits_processors = mlx_kwargs.get("logits_processors", [])
             logits_processors.append(
@@ -244,19 +245,11 @@ class MLXGenerateWrapper:
                 max_tokens=max_tokens, top_logprobs=top_logprobs
             )
         else:
-            # Override config values with function parameters
-            generate_config = MLXGenerateConfig(
-                max_tokens=max_tokens,  # Function parameter takes precedence
-                top_logprobs=top_logprobs,  # Function parameter takes precedence
-                # Keep other config values
-                max_kv_size=generate_config.max_kv_size,
-                kv_bits=generate_config.kv_bits,
-                kv_group_size=generate_config.kv_group_size,
-                quantized_kv_start=generate_config.quantized_kv_start,
-                num_draft_tokens=generate_config.num_draft_tokens,
-                repetition_penalty=generate_config.repetition_penalty,
-                seed=generate_config.seed,
-                json_schema=generate_config.json_schema,
+            # Override config values with function parameters using dataclasses.replace
+            generate_config = replace(
+                generate_config,
+                max_tokens=max_tokens,
+                top_logprobs=top_logprobs,
             )
 
         return sampler_config, generate_config
@@ -300,36 +293,14 @@ class MLXGenerateWrapper:
     def _create_generation_stats(
         self, response, cached_tokens: int = 0
     ) -> GenerationStats:
-        """Create GenerationStats from MLX response.
-
-        Args:
-            response: MLX response object or GenerationResult
-            cached_tokens: Number of cached tokens
-
-        Returns:
-            GenerationStats instance
-        """
-        # Handle both raw MLX response and GenerationResult
-        if hasattr(response, "stats"):
-            # It's a GenerationResult, copy existing stats
-            return GenerationStats(
-                prompt_tokens=response.stats.prompt_tokens,
-                completion_tokens=response.stats.completion_tokens,
-                prompt_tps=response.stats.prompt_tps,
-                generation_tps=response.stats.generation_tps,
-                peak_memory=response.stats.peak_memory,
-                cache_hit_tokens=response.stats.cache_hit_tokens,
-            )
-        else:
-            # It's a raw MLX response
-            return GenerationStats(
-                prompt_tokens=response.prompt_tokens,
-                completion_tokens=response.generation_tokens,
-                prompt_tps=response.prompt_tps,
-                generation_tps=response.generation_tps,
-                peak_memory=response.peak_memory,
-                cache_hit_tokens=cached_tokens,
-            )
+        return GenerationStats(
+            prompt_tokens=response.prompt_tokens,
+            completion_tokens=response.generation_tokens,
+            prompt_tps=response.prompt_tps,
+            generation_tps=response.generation_tps,
+            peak_memory=response.peak_memory,
+            cache_hit_tokens=cached_tokens,
+        )
 
     def generate(
         self,
@@ -368,21 +339,8 @@ class MLXGenerateWrapper:
             Complete generation result
         """
         try:
-            # Prepare configurations
-            sampler_config, generate_config = self._prepare_configs(
-                max_tokens,
-                temperature,
-                top_p,
-                top_k,
-                top_logprobs,
-                sampler_config,
-                generate_config,
-            )
-
-            # Determine processing flags from parameters
-            enable_tools = bool(tools)
-
-            # Generate complete response by collecting stream
+            # Generate complete response by collecting stream.
+            # stream_generate handles the preparation of configurations.
             complete_text = ""
             final_result = None
 
@@ -410,17 +368,20 @@ class MLXGenerateWrapper:
             tool_calls = None
 
             # Step 1: Process reasoning first (extract <think> tags)
-            # Always try to process reasoning, regardless of enable_reasoning flag
-            # This allows automatic detection of <think> tags even when not explicitly enabled
-            reasoning_result = self.reasoning_decoder.decode(complete_text)
-            if reasoning_result:
-                reasoning = reasoning_result.get("reasoning")
-                complete_text = reasoning_result.get("content", complete_text)
+            # Always extract reasoning when <think> tags are present
+            old_enable_thinking = self.reasoning_decoder.enable_thinking
+            self.reasoning_decoder.enable_thinking = True
+            try:
+                reasoning_result = self.reasoning_decoder.decode(complete_text)
+                if reasoning_result:
+                    reasoning = reasoning_result.get("reasoning")
+                    complete_text = reasoning_result.get("content", complete_text)
+            finally:
+                self.reasoning_decoder.enable_thinking = old_enable_thinking
 
             # Step 2: Process tools from remaining content
-            if enable_tools and tools:
+            if tools:
                 tool_calls = self.chat_tokenizer.decode(complete_text)
-                # No need to modify complete_text as tool calls are extracted separately
 
             # Step 3: Remaining content is plain text (already in complete_text)
 
@@ -434,7 +395,7 @@ class MLXGenerateWrapper:
                 text=complete_text,
                 token=final_result.token,
                 finish_reason=finish_reason,
-                stats=self._create_generation_stats(final_result),
+                stats=final_result.stats,
                 tool_calls=tool_calls,
                 reasoning=reasoning,
                 logprobs=final_result.logprobs,

@@ -24,7 +24,7 @@ classifiers = [
 ]
 dependencies = [
     # core
-    "fastapi>=0.115.4,<0.116",
+    "fastapi>=0.116.1,<0.117",
     "pydantic>=2.9.2,<3",
     "uvicorn>=0.34.0,<0.35",
     "rich>=13.9.4",
@@ -60,7 +60,7 @@ dev = [
     "black>=24.10.0,<25",
     "isort>=5.13.2,<6",
     "weave>=0.51.46,<0.60",
-    "openai>=1.78.0",
+    "openai>=1.97.0",
     # for en_core_web_sm models
     "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
 ]

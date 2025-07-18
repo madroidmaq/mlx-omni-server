@@ -1,12 +1,9 @@
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-from fastapi.testclient import TestClient
-from openai import OpenAI
 
 from mlx_omni_server.chat.mlx.tools.reasoning_decoder import ReasoningDecoder
-from mlx_omni_server.main import app
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
