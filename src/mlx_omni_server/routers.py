@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .chat import router as chat_router
+from .chat.anthropic import router as anthropic_router
 from .chat.models import models
 from .embeddings import router as embeddings_router
 from .images import images
@@ -14,3 +15,4 @@ api_router.include_router(models.router)
 api_router.include_router(images.router)
 api_router.include_router(chat_router.router)
 api_router.include_router(embeddings_router.router)
+api_router.include_router(anthropic_router.router, prefix="/anthropic")
