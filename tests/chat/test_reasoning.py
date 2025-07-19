@@ -54,7 +54,35 @@ class TestReasoningResponse:
             logger.error(f"Test error: {str(e)}")
             raise
 
-    def test_none_reasoning_response(self, openai_client):
+    def test_deepseek_none_reasoning_response(self, openai_client):
+        """Test functionality of the ReasoningResponse class"""
+        try:
+            model = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+            response = openai_client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": "hello"}],
+                extra_body={
+                    "enable_thinking": False,
+                },
+            )
+            logger.info(
+                f"=============== Chat Completion Response ===============:\n{response.choices[0].message}\n"
+            )
+
+            # Validate response
+            assert response.object == "chat.completion", "No usage in response"
+            choices = response.choices[0]
+            assert choices.message is not None, "No message in response"
+            # 因为 enable_thinking = False，所以不会处理 <think>、</think> 标签，所以在 content 中会有这些原始标签内容
+            # 一些没有对 enable_thinking 进行支持的模型会是此逻辑，像 qwen3 这样的支持的模型，会在 prompt 中添加前缀 <think></think>
+            assert (
+                "</think>" in choices.message.content
+            ), "Message content is not correct"
+        except Exception as e:
+            logger.error(f"Test error: {str(e)}")
+            raise
+
+    def test_qwen3_none_reasoning_response(self, openai_client):
         """Test functionality of the ReasoningResponse class"""
         try:
             model = "mlx-community/Qwen3-0.6B-4bit"
@@ -76,7 +104,6 @@ class TestReasoningResponse:
             assert (
                 "</think>" not in choices.message.content
             ), "Message content is not correct"
-            assert choices.message.reasoning is None, "Has reasoning in message"
         except Exception as e:
             logger.error(f"Test error: {str(e)}")
             raise

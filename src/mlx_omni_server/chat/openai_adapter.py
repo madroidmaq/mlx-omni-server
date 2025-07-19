@@ -2,7 +2,6 @@ import time
 import uuid
 from typing import Generator
 
-from mlx_omni_server.chat.mlx.core_types import GenerationResult
 from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
 from mlx_omni_server.chat.mlx.model_types import MlxModelCache
 from mlx_omni_server.chat.schema import (
@@ -34,89 +33,80 @@ class OpenAIAdapter(BaseTextModel):
         self._default_max_tokens = 2048
         self._generate_wrapper = MLXGenerateWrapper(model_cache)
 
-    def _stream_generate(
-        self,
-        request: ChatCompletionRequest,
-    ) -> Generator[GenerationResult, None, None]:
-        """Stream generate using the wrapper with OpenAI format conversion."""
-        try:
-            # Extract basic parameters from OpenAI request
-            max_tokens = (
-                request.max_completion_tokens
-                or request.max_tokens
-                or self._default_max_tokens
-            )
+    def _prepare_generation_params(self, request: ChatCompletionRequest) -> dict:
+        """Prepare common parameters for both generate and stream_generate."""
+        max_tokens = (
+            request.max_completion_tokens
+            or request.max_tokens
+            or self._default_max_tokens
+        )
 
-            # Extract parameters from request and extra params
-            extra_params = request.get_extra_params()
-            extra_body = extra_params.get("extra_body", {})
+        # Extract parameters from request and extra params
+        extra_params = request.get_extra_params()
+        extra_body = extra_params.get("extra_body", {})
 
-            # Prepare sampler parameters
-            sampler_kwargs = {
-                "min_p": extra_body.get("min_p", 0.0),
-                "min_tokens_to_keep": extra_body.get("min_tokens_to_keep", 1),
-                "xtc_probability": extra_body.get("xtc_probability", 0.0),
-                "xtc_threshold": extra_body.get("xtc_threshold", 0.0),
+        # Prepare sampler parameters
+        sampler_kwargs = {
+            "min_p": extra_body.get("min_p", 0.0),
+            "min_tokens_to_keep": extra_body.get("min_tokens_to_keep", 1),
+            "xtc_probability": extra_body.get("xtc_probability", 0.0),
+            "xtc_threshold": extra_body.get("xtc_threshold", 0.0),
+        }
+        if extra_body.get("top_k") is not None:
+            sampler_kwargs["top_k"] = extra_body.get("top_k")
+
+        # Prepare template parameters - include both extra_body and direct extra params
+        template_kwargs = dict(extra_body)
+
+        # Handle direct extra parameters (for backward compatibility)
+        for key in ["enable_thinking"]:
+            if key in extra_params:
+                template_kwargs[key] = extra_params[key]
+
+        # Only set default if not explicitly provided
+        if "enable_thinking" not in template_kwargs:
+            template_kwargs["enable_thinking"] = True
+
+        # Convert messages to dict format
+        messages = [
+            {
+                "role": (
+                    msg.role.value if hasattr(msg.role, "value") else str(msg.role)
+                ),
+                "content": msg.content,
+                **({"name": msg.name} if msg.name else {}),
+                **({"tool_calls": msg.tool_calls} if msg.tool_calls else {}),
             }
-            if extra_body.get("top_k") is not None:
-                sampler_kwargs["top_k"] = extra_body.get("top_k")
+            for msg in request.messages
+        ]
 
-            # Prepare template parameters
-            template_kwargs = dict(extra_body)
-            template_kwargs.setdefault("enable_thinking", True)
-
-            # Convert messages to dict format
-            messages = [
-                {
-                    "role": (
-                        msg.role.value if hasattr(msg.role, "value") else str(msg.role)
-                    ),
-                    "content": msg.content,
-                    **({"name": msg.name} if msg.name else {}),
-                    **({"tool_calls": msg.tool_calls} if msg.tool_calls else {}),
-                }
-                for msg in request.messages
+        # Convert tools to dict format
+        tools = None
+        if request.tools:
+            tools = [
+                tool.model_dump() if hasattr(tool, "model_dump") else dict(tool)
+                for tool in request.tools
             ]
 
-            # Convert tools to dict format
-            tools = None
-            if request.tools:
-                tools = [
-                    tool.model_dump() if hasattr(tool, "model_dump") else dict(tool)
-                    for tool in request.tools
-                ]
+        logger.info(f"messages: {messages}")
+        logger.info(f"template_kwargs: {template_kwargs}")
 
-            logger.info(f"messages: {messages}")
-
-            # Delegate to wrapper
-            for result in self._generate_wrapper.stream_generate(
-                messages=messages,
-                tools=tools,
-                max_tokens=max_tokens,
-                temperature=1.0 if request.temperature is None else request.temperature,
-                top_p=1.0 if request.top_p is None else request.top_p,
-                top_k=extra_body.get("top_k", 0),
-                top_logprobs=request.top_logprobs if request.logprobs else None,
-                sampler_kwargs=sampler_kwargs,
-                template_kwargs=template_kwargs,
-                enable_prompt_cache=True,
-                repetition_penalty=request.presence_penalty,
-                json_schema=(
-                    request.response_format.json_schema
-                    if request.response_format
-                    else None
-                ),
-                # max_kv_size=extra_body.get("max_kv_size"),
-                # kv_bits=extra_body.get("kv_bits"),
-                # kv_group_size=extra_body.get("kv_group_size", 64),
-                # quantized_kv_start=extra_body.get("quantized_kv_start", 0),
-                # num_draft_tokens=extra_body.get("num_draft_tokens", 3),
-            ):
-                yield result
-
-        except Exception as e:
-            logger.error(f"Error during stream generation: {str(e)}", exc_info=True)
-            raise
+        return {
+            "messages": messages,
+            "tools": tools,
+            "max_tokens": max_tokens,
+            "temperature": 1.0 if request.temperature is None else request.temperature,
+            "top_p": 1.0 if request.top_p is None else request.top_p,
+            "top_k": extra_body.get("top_k", 0),
+            "top_logprobs": request.top_logprobs if request.logprobs else None,
+            "sampler_kwargs": sampler_kwargs,
+            "template_kwargs": template_kwargs,
+            "enable_prompt_cache": True,
+            "repetition_penalty": request.presence_penalty,
+            "json_schema": (
+                request.response_format.json_schema if request.response_format else None
+            ),
+        }
 
     def generate(
         self,
@@ -124,29 +114,20 @@ class OpenAIAdapter(BaseTextModel):
     ) -> ChatCompletionResponse:
         """Generate complete response using the wrapper."""
         try:
-            # Collect all tokens for complete response
-            completion = ""
-            logprobs_result_list = []
+            # Prepare parameters
+            params = self._prepare_generation_params(request)
 
-            for stream_result in self._stream_generate(request=request):
-                completion += stream_result.text
-                if request.logprobs:
-                    logprobs_result_list.append(stream_result.logprobs)
-                result = stream_result
+            # Directly use wrapper's generate method for complete response
+            result = self._generate_wrapper.generate(**params)
 
-            if result is None:
-                raise RuntimeError("No tokens generated")
+            logger.debug(f"Model Response:\n{result.text}")
 
-            logger.debug(f"Model Response:\n{completion}")
-
-            # Use reasoning from the wrapper's result instead of re-processing
-            # The wrapper has already handled reasoning extraction based on enable_thinking
-            final_content = completion
+            # Use reasoning from the wrapper's result
+            final_content = result.text
             reasoning_content = result.reasoning
 
             # Use wrapper's chat tokenizer for tool processing
             if request.tools:
-                # Pass the content *after* reasoning has been stripped
                 tool_calls = self._generate_wrapper.chat_tokenizer.decode(final_content)
                 message = ChatMessage(
                     role=Role.ASSISTANT,
@@ -184,11 +165,7 @@ class OpenAIAdapter(BaseTextModel):
                             if message.tool_calls
                             else (result.finish_reason or "stop")
                         ),
-                        logprobs=(
-                            {"content": logprobs_result_list}
-                            if logprobs_result_list
-                            else None
-                        ),
+                        logprobs=result.logprobs,
                     )
                 ],
                 usage=ChatCompletionUsage(
@@ -212,19 +189,24 @@ class OpenAIAdapter(BaseTextModel):
         try:
             chat_id = f"chatcmpl-{uuid.uuid4().hex[:10]}"
 
-            completion = ""
+            # Prepare parameters
+            params = self._prepare_generation_params(request)
+
+            # Directly use wrapper's stream_generate method
             result = None
-            for result in self._stream_generate(request=request):
+            for stream_result in self._generate_wrapper.stream_generate(**params):
                 created = int(time.time())
-                completion += result.text
 
                 # Use wrapper's chat tokenizer for tool processing
                 if request.tools:
-                    message = self._generate_wrapper.chat_tokenizer.decode(result.text)
+                    message = self._generate_wrapper.chat_tokenizer.decode(
+                        stream_result.text
+                    )
                 else:
-                    # For streaming, we need to accumulate reasoning content
-                    # In streaming mode, reasoning is handled by the decoder
-                    message = ChatMessage(role=Role.ASSISTANT, content=result.text)
+                    # For streaming, reasoning is handled by the decoder
+                    message = ChatMessage(
+                        role=Role.ASSISTANT, content=stream_result.text
+                    )
 
                 yield ChatCompletionChunk(
                     id=chat_id,
@@ -234,16 +216,17 @@ class OpenAIAdapter(BaseTextModel):
                         ChatCompletionChunkChoice(
                             index=0,
                             delta=message,
-                            finish_reason=result.finish_reason or "stop",
-                            logprobs=result.logprobs,
+                            finish_reason=stream_result.finish_reason or "stop",
+                            logprobs=stream_result.logprobs,
                         )
                     ],
                 )
+                result = stream_result
 
             if (
                 request.stream_options
                 and request.stream_options.include_usage
-                and result
+                and result is not None
             ):
                 created = int(time.time())
                 cached_tokens = result.stats.cache_hit_tokens

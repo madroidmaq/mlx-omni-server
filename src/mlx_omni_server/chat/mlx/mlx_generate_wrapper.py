@@ -308,9 +308,6 @@ class MLXGenerateWrapper:
             logger.info(
                 f"enable_reasoning: {enable_reasoning}, complete_text: {complete_text[:100]}..."
             )
-            print(
-                f"enable_reasoning: {enable_reasoning}, complete_text: {complete_text[:100]}..."
-            )
             old_enable_thinking = self.reasoning_decoder.enable_thinking
             self.reasoning_decoder.enable_thinking = enable_reasoning
             try:
@@ -328,9 +325,13 @@ class MLXGenerateWrapper:
                 else:
                     # When reasoning is disabled, don't extract reasoning content
                     reasoning = None
-                    logger.debug("Reasoning disabled, keeping original text")
-                    # Keep the original text as-is (don't process for reasoning)
-                    complete_text = complete_text
+                    logger.debug("Reasoning disabled, removing think tags")
+                    # Remove think tags even when reasoning is disabled
+                    reasoning_result = self.reasoning_decoder.decode(complete_text)
+                    if reasoning_result:
+                        complete_text = reasoning_result.get("content", complete_text)
+                    else:
+                        complete_text = complete_text
             finally:
                 self.reasoning_decoder.enable_thinking = old_enable_thinking
 
