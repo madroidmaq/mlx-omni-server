@@ -2,12 +2,7 @@ import time
 import uuid
 from typing import Generator
 
-from mlx_omni_server.chat.mlx.core_types import (
-    ChatTemplateConfig,
-    GenerationResult,
-    MLXGenerateConfig,
-    SamplerConfig,
-)
+from mlx_omni_server.chat.mlx.core_types import GenerationResult
 from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
 from mlx_omni_server.chat.mlx.model_types import MlxModelCache
 from mlx_omni_server.chat.schema import (
@@ -56,38 +51,19 @@ class OpenAIAdapter(BaseTextModel):
             extra_params = request.get_extra_params()
             extra_body = extra_params.get("extra_body", {})
 
-            sampler_config = SamplerConfig(
-                temperature=1.0 if request.temperature is None else request.temperature,
-                top_p=1.0 if request.top_p is None else request.top_p,
-                top_k=extra_body.get("top_k"),
-                min_p=extra_body.get("min_p", 0.0),
-                min_tokens_to_keep=extra_body.get("min_tokens_to_keep", 1),
-                xtc_probability=extra_body.get("xtc_probability", 0.0),
-                xtc_threshold=extra_body.get("xtc_threshold", 0.0),
-            )
+            # Prepare sampler parameters
+            sampler_kwargs = {
+                "min_p": extra_body.get("min_p", 0.0),
+                "min_tokens_to_keep": extra_body.get("min_tokens_to_keep", 1),
+                "xtc_probability": extra_body.get("xtc_probability", 0.0),
+                "xtc_threshold": extra_body.get("xtc_threshold", 0.0),
+            }
+            if extra_body.get("top_k") is not None:
+                sampler_kwargs["top_k"] = extra_body.get("top_k")
 
-            generate_config = MLXGenerateConfig(
-                max_tokens=max_tokens,
-                repetition_penalty=request.presence_penalty,
-                json_schema=(
-                    request.response_format.json_schema
-                    if request.response_format
-                    else None
-                ),
-                top_logprobs=request.top_logprobs if request.logprobs else None,
-                max_kv_size=extra_body.get("max_kv_size"),
-                kv_bits=extra_body.get("kv_bits"),
-                kv_group_size=extra_body.get("kv_group_size", 64),
-                quantized_kv_start=extra_body.get("quantized_kv_start", 0),
-                num_draft_tokens=extra_body.get("num_draft_tokens", 3),
-            )
-
-            template_config = ChatTemplateConfig(
-                template_kwargs=extra_body,
-                enable_thinking=extra_body.get("enable_thinking", True),
-                thinking_budget=extra_body.get("thinking_budget"),
-                reasoning_effort=extra_body.get("reasoning_effort"),
-            )
+            # Prepare template parameters
+            template_kwargs = dict(extra_body)
+            template_kwargs.setdefault("enable_thinking", True)
 
             # Convert messages to dict format
             messages = [
@@ -117,14 +93,24 @@ class OpenAIAdapter(BaseTextModel):
                 messages=messages,
                 tools=tools,
                 max_tokens=max_tokens,
-                temperature=sampler_config.temperature,
-                top_p=sampler_config.top_p,
-                top_k=sampler_config.top_k,
-                top_logprobs=generate_config.top_logprobs,
-                sampler_config=sampler_config,
-                generate_config=generate_config,
-                template_config=template_config,
+                temperature=1.0 if request.temperature is None else request.temperature,
+                top_p=1.0 if request.top_p is None else request.top_p,
+                top_k=extra_body.get("top_k", 0),
+                top_logprobs=request.top_logprobs if request.logprobs else None,
+                sampler_kwargs=sampler_kwargs,
+                template_kwargs=template_kwargs,
                 enable_prompt_cache=True,
+                repetition_penalty=request.presence_penalty,
+                json_schema=(
+                    request.response_format.json_schema
+                    if request.response_format
+                    else None
+                ),
+                # max_kv_size=extra_body.get("max_kv_size"),
+                # kv_bits=extra_body.get("kv_bits"),
+                # kv_group_size=extra_body.get("kv_group_size", 64),
+                # quantized_kv_start=extra_body.get("quantized_kv_start", 0),
+                # num_draft_tokens=extra_body.get("num_draft_tokens", 3),
             ):
                 yield result
 
@@ -141,7 +127,6 @@ class OpenAIAdapter(BaseTextModel):
             # Collect all tokens for complete response
             completion = ""
             logprobs_result_list = []
-            result = None
 
             for stream_result in self._stream_generate(request=request):
                 completion += stream_result.text
@@ -154,10 +139,10 @@ class OpenAIAdapter(BaseTextModel):
 
             logger.debug(f"Model Response:\n{completion}")
 
-            # Decode the final completion to separate content and reasoning
-            decoded_result = self._generate_wrapper.reasoning_decoder.decode(completion)
-            final_content = decoded_result.get("content", completion)
-            reasoning_content = decoded_result.get("reasoning")
+            # Use reasoning from the wrapper's result instead of re-processing
+            # The wrapper has already handled reasoning extraction based on enable_thinking
+            final_content = completion
+            reasoning_content = result.reasoning
 
             # Use wrapper's chat tokenizer for tool processing
             if request.tools:

@@ -2,13 +2,7 @@
 
 import pytest
 
-from mlx_omni_server.chat.mlx.core_types import (
-    ChatTemplateConfig,
-    GenerationResult,
-    MLXGenerateConfig,
-    SamplerConfig,
-    ToolCall,
-)
+from mlx_omni_server.chat.mlx.core_types import GenerationResult, ToolCall
 from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
 from mlx_omni_server.chat.mlx.model_types import MlxModelCache, ModelId
 
@@ -88,10 +82,15 @@ class TestMLXGenerateWrapper:
         """Test generation with custom sampler configuration."""
         messages = [{"role": "user", "content": "What is 2+2?"}]
 
-        sampler_config = SamplerConfig(temperature=0.5, top_p=0.9, top_k=50)
+        sampler_kwargs = {"min_p": 0.1, "xtc_probability": 0.1}
 
         result = mlx_wrapper.generate(
-            messages=messages, max_tokens=20, sampler_config=sampler_config
+            messages=messages,
+            max_tokens=20,
+            temperature=0.5,
+            top_p=0.9,
+            top_k=50,
+            sampler_kwargs=sampler_kwargs,
         )
 
         assert isinstance(result, GenerationResult)
@@ -101,14 +100,11 @@ class TestMLXGenerateWrapper:
         """Test generation with MLX-specific configuration."""
         messages = [{"role": "user", "content": "Explain gravity briefly"}]
 
-        generate_config = MLXGenerateConfig(
-            max_tokens=50, repetition_penalty=1.1, seed=42
-        )
-
         result = mlx_wrapper.generate(
             messages=messages,
             max_tokens=50,  # Function parameter takes precedence
-            generate_config=generate_config,
+            repetition_penalty=1.1,
+            max_kv_size=2048,  # Valid parameter for generate_step
         )
 
         assert isinstance(result, GenerationResult)
@@ -129,10 +125,10 @@ class TestMLXGenerateWrapper:
         """Test generation with thinking/reasoning mode."""
         messages = [{"role": "user", "content": "Solve 15 + 27"}]
 
-        template_config = ChatTemplateConfig(enable_thinking=True, thinking_budget=100)
+        template_kwargs = {"enable_thinking": True, "thinking_budget": 100}
 
         result = mlx_wrapper.generate(
-            messages=messages, max_tokens=100, template_config=template_config
+            messages=messages, max_tokens=100, template_kwargs=template_kwargs
         )
 
         assert isinstance(result, GenerationResult)
@@ -160,15 +156,15 @@ class TestMLXGenerateWrapper:
         """Test streaming generation with custom configurations."""
         messages = [{"role": "user", "content": "Tell me about cats"}]
 
-        sampler_config = SamplerConfig(temperature=0.7, top_p=0.95)
-        generate_config = MLXGenerateConfig(max_tokens=40)
+        sampler_kwargs = {"min_p": 0.1, "xtc_probability": 0.1}
 
         results = []
         for result in mlx_wrapper.stream_generate(
             messages=messages,
             max_tokens=40,  # Function parameter takes precedence
-            sampler_config=sampler_config,
-            generate_config=generate_config,
+            temperature=0.7,
+            top_p=0.95,
+            sampler_kwargs=sampler_kwargs,
         ):
             results.append(result)
 
@@ -233,29 +229,29 @@ class TestMLXGenerateWrapper:
         assert len(result.text) > 0
 
     def test_parameter_precedence(self, mlx_wrapper):
-        """Test that function parameters take precedence over config objects."""
+        """Test that function parameters take precedence."""
         messages = [{"role": "user", "content": "Test precedence"}]
 
-        # Config with different max_tokens
-        generate_config = MLXGenerateConfig(max_tokens=100)
-
-        # Function parameter should override config
-        result = mlx_wrapper.generate(
-            messages=messages, max_tokens=10, generate_config=generate_config
-        )
+        # Function parameter should be respected
+        result = mlx_wrapper.generate(messages=messages, max_tokens=10)
 
         assert isinstance(result, GenerationResult)
         assert result.stats.completion_tokens <= 10  # Should respect function parameter
 
-    def test_streaming_reasoning_mode(self, mlx_wrapper):
+    def test_streaming_reasoning_mode(self):
         """Test streaming with reasoning/thinking enabled."""
+        reasoning_model = MlxModelCache(
+            model_id=ModelId(name="mlx-community/Qwen3-0.6B-4bit")
+        )
+        reasoning_wrapper = MLXGenerateWrapper(reasoning_model)
+
         messages = [{"role": "user", "content": "Calculate 23 * 17"}]
 
-        template_config = ChatTemplateConfig(enable_thinking=True)
+        template_kwargs = {"enable_thinking": True}
 
         results = []
-        for result in mlx_wrapper.stream_generate(
-            messages=messages, max_tokens=80, template_config=template_config
+        for result in reasoning_wrapper.stream_generate(
+            messages=messages, max_tokens=80, template_kwargs=template_kwargs
         ):
             results.append(result)
 
@@ -278,10 +274,10 @@ class TestMLXGenerateWrapper:
                     "content": "Think about this step by step: What is 5 + 3?",
                 }
             ]
-            template_config = ChatTemplateConfig(enable_thinking=True)
+            template_kwargs = {"enable_thinking": True}
 
             result = reasoning_wrapper.generate(
-                messages=messages, template_config=template_config
+                messages=messages, template_kwargs=template_kwargs
             )
 
             assert isinstance(result, GenerationResult)
@@ -308,9 +304,8 @@ class TestMLXGenerateWrapper:
         result = mlx_wrapper.generate(
             messages=messages,
             tools=None,
-            sampler_config=None,
-            generate_config=None,
-            template_config=None,
+            sampler_kwargs=None,
+            template_kwargs=None,
             max_tokens=10,
         )
 

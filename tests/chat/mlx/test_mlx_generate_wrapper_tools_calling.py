@@ -4,13 +4,7 @@ import logging
 
 import pytest
 
-from mlx_omni_server.chat.mlx.core_types import (
-    ChatTemplateConfig,
-    GenerationResult,
-    MLXGenerateConfig,
-    SamplerConfig,
-    ToolCall,
-)
+from mlx_omni_server.chat.mlx.core_types import GenerationResult, ToolCall
 from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
 from mlx_omni_server.chat.mlx.model_types import MlxModelCache, ModelId
 

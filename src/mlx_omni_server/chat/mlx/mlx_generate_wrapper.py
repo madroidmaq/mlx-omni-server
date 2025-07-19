@@ -8,13 +8,7 @@ from mlx_lm.generate import stream_generate
 from mlx_lm.sample_utils import make_sampler
 
 from ...utils.logger import logger
-from .core_types import (
-    ChatTemplateConfig,
-    GenerationResult,
-    GenerationStats,
-    MLXGenerateConfig,
-    SamplerConfig,
-)
+from .core_types import GenerationResult, GenerationStats
 from .model_types import MlxModelCache
 
 
@@ -62,14 +56,14 @@ class MLXGenerateWrapper:
         self,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
-        template_config: Optional[ChatTemplateConfig] = None,
+        template_kwargs: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Prepare prompt using chat tokenizer.
 
         Args:
             messages: Chat messages in standard format (dictionaries)
             tools: Optional tools for function calling
-            template_config: Chat template configuration
+            template_kwargs: Template parameters for chat tokenizer
 
         Returns:
             Encoded prompt string
@@ -77,17 +71,9 @@ class MLXGenerateWrapper:
         if tools:
             logger.debug(f"Prepared {len(tools)} tools for encoding")
 
-        # Extract template kwargs from config
-        template_kwargs = {}
-        if template_config:
-            template_kwargs.update(template_config.template_kwargs or {})
-
-            # Add thinking-related parameters if present
-            thinking_params = ["enable_thinking", "thinking_budget", "reasoning_effort"]
-            for param in thinking_params:
-                value = getattr(template_config, param, None)
-                if value is not None:
-                    template_kwargs[param] = value
+        # Use template_kwargs directly, default to empty dict
+        if template_kwargs is None:
+            template_kwargs = {}
 
         prompt = self.chat_tokenizer.encode(
             messages=messages, tools=tools, **template_kwargs
@@ -97,72 +83,81 @@ class MLXGenerateWrapper:
         return prompt
 
     def _create_mlx_kwargs(
-        self, sampler_config: SamplerConfig, generate_config: MLXGenerateConfig
+        self,
+        temperature: float,
+        top_p: float,
+        top_k: int,
+        sampler_kwargs: Optional[Dict[str, Any]],
+        max_tokens: int = 2048,
+        top_logprobs: Optional[int] = None,
+        **kwargs,
     ) -> Dict[str, Any]:
-        """Convert configs to mlx-lm compatible kwargs.
+        """Convert parameters to mlx-lm compatible kwargs.
 
         Args:
-            sampler_config: Sampler configuration
-            generate_config: Generation configuration
+            temperature: Sampling temperature
+            top_p: Top-p sampling value
+            top_k: Top-k sampling value
+            sampler_kwargs: Additional sampler parameters
+            max_tokens: int = 2048,
+            top_logprobs: Optional[int] = None,
+            **kwargs
 
         Returns:
             Dictionary of kwargs for mlx-lm generate functions
         """
         # Core MLX parameters
         mlx_kwargs = {
-            "max_tokens": generate_config.max_tokens,
+            "max_tokens": max_tokens,
         }
 
-        # Create sampler
-        sampler_kwargs = {
-            "temp": sampler_config.temperature,
-            "top_p": sampler_config.top_p,
-            "min_p": sampler_config.min_p,
-            "min_tokens_to_keep": sampler_config.min_tokens_to_keep,
-            "xtc_probability": sampler_config.xtc_probability,
-            "xtc_threshold": sampler_config.xtc_threshold,
+        # Create sampler with core parameters
+        core_sampler_kwargs = {
+            "temp": temperature,
+            "top_p": top_p,
+            "top_k": top_k,
+            "min_p": 0.0,
+            "min_tokens_to_keep": 1,
+            "xtc_probability": 0.0,
+            "xtc_threshold": 0.0,
         }
 
-        if sampler_config.top_k is not None:
-            sampler_kwargs["top_k"] = sampler_config.top_k
+        if top_k is not None:
+            core_sampler_kwargs["top_k"] = top_k
 
-        mlx_kwargs["sampler"] = make_sampler(**sampler_kwargs)
+        # Merge with additional sampler kwargs
+        if sampler_kwargs:
+            core_sampler_kwargs.update(sampler_kwargs)
 
-        # Performance options
-        if generate_config.max_kv_size is not None:
-            mlx_kwargs["max_kv_size"] = generate_config.max_kv_size
-        if generate_config.kv_bits is not None:
-            mlx_kwargs["kv_bits"] = generate_config.kv_bits
-            mlx_kwargs["kv_group_size"] = generate_config.kv_group_size
-            mlx_kwargs["quantized_kv_start"] = generate_config.quantized_kv_start
+        mlx_kwargs["sampler"] = make_sampler(**core_sampler_kwargs)
 
-        # Generation control
-        if generate_config.repetition_penalty is not None:
+        # Handle special cases that need preprocessing
+        handled_kwargs = set()
+
+        if kwargs.get("repetition_penalty") is not None:
             from mlx_lm.sample_utils import make_logits_processors
 
-            mlx_kwargs["logits_processors"] = make_logits_processors(
-                repetition_penalty=generate_config.repetition_penalty
+            existing_processors = mlx_kwargs.get("logits_processors", [])
+            new_processors = make_logits_processors(
+                repetition_penalty=kwargs["repetition_penalty"]
             )
+            mlx_kwargs["logits_processors"] = existing_processors + new_processors
+            handled_kwargs.add("repetition_penalty")
 
-        if generate_config.seed is not None:
-            # Note: MLX stream_generate doesn't support seed parameter
-            # This would need to be set before generation starts
-            pass
-
-        # Draft model
-        if self.model_cache.draft_model is not None:
-            mlx_kwargs["draft_model"] = self.model_cache.draft_model
-            mlx_kwargs["num_draft_tokens"] = generate_config.num_draft_tokens
-
-        # JSON schema
-        if generate_config.json_schema is not None:
+        if kwargs.get("json_schema") is not None:
             from .outlines_logits_processor import OutlinesLogitsProcessor
 
             logits_processors = mlx_kwargs.get("logits_processors", [])
             logits_processors.append(
-                OutlinesLogitsProcessor(self.tokenizer, generate_config.json_schema)
+                OutlinesLogitsProcessor(self.tokenizer, kwargs["json_schema"])
             )
             mlx_kwargs["logits_processors"] = logits_processors
+            handled_kwargs.add("json_schema")
+
+        # Handle remaining valid kwargs
+        for key, value in kwargs.items():
+            if key not in handled_kwargs and value is not None:
+                mlx_kwargs[key] = value
 
         return mlx_kwargs
 
@@ -210,70 +205,6 @@ class MLXGenerateWrapper:
 
         return {**token_info, "top_logprobs": top_logprobs}
 
-    def _prepare_configs(
-        self,
-        max_tokens: int,
-        temperature: float,
-        top_p: float,
-        top_k: Optional[int],
-        top_logprobs: Optional[int],
-        sampler_config: Optional[SamplerConfig],
-        generate_config: Optional[MLXGenerateConfig],
-    ) -> tuple[SamplerConfig, MLXGenerateConfig]:
-        """Prepare sampler and generation configurations.
-
-        Args:
-            max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
-            top_p: Top-p sampling value
-            top_k: Top-k sampling value
-            top_logprobs: Number of top logprobs to include
-            sampler_config: Optional sampler configuration
-            generate_config: Optional generation configuration
-
-        Returns:
-            Tuple of (sampler_config, generate_config)
-        """
-        # Use provided configs or create defaults with common parameters
-        if sampler_config is None:
-            sampler_config = SamplerConfig(
-                temperature=temperature, top_p=top_p, top_k=top_k
-            )
-
-        if generate_config is None:
-            generate_config = MLXGenerateConfig(
-                max_tokens=max_tokens, top_logprobs=top_logprobs
-            )
-        else:
-            # Override config values with function parameters using dataclasses.replace
-            generate_config = replace(
-                generate_config,
-                max_tokens=max_tokens,
-                top_logprobs=top_logprobs,
-            )
-
-        return sampler_config, generate_config
-
-    def _setup_reasoning_decoder(
-        self, template_config: Optional[ChatTemplateConfig], prompt_str: str
-    ):
-        """Setup reasoning decoder for generation.
-
-        Args:
-            template_config: Chat template configuration
-            prompt_str: The prepared prompt string
-        """
-        template_kwargs = template_config.template_kwargs if template_config else {}
-        enable_thinking = template_kwargs.get("enable_thinking", True)
-        self.reasoning_decoder.enable_thinking = enable_thinking
-
-        if enable_thinking:
-            self.reasoning_decoder.set_thinking_prefix(True)
-            if prompt_str.endswith(f"<{self.reasoning_decoder.thinking_tag}>"):
-                self.reasoning_decoder.set_thinking_prefix(True)
-            else:
-                self.reasoning_decoder.set_thinking_prefix(False)
-
     def _get_logprobs(
         self, response, top_logprobs: Optional[int]
     ) -> Optional[Dict[str, Any]]:
@@ -306,19 +237,21 @@ class MLXGenerateWrapper:
         self,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
-        # Common parameters promoted to function arguments
+        # Core generation parameters
         max_tokens: int = 2048,
         temperature: float = 1.0,
         top_p: float = 1.0,
-        top_k: Optional[int] = None,
+        top_k: int = 0,
         # Logprobs parameter (MLX style)
         top_logprobs: Optional[int] = None,
-        # Advanced configurations
-        sampler_config: Optional[SamplerConfig] = None,
-        generate_config: Optional[MLXGenerateConfig] = None,
-        template_config: Optional[ChatTemplateConfig] = None,
+        # Additional sampler parameters
+        sampler_kwargs: Optional[Dict[str, Any]] = None,
+        # Template parameters
+        template_kwargs: Optional[Dict[str, Any]] = None,
         # Control parameters
         enable_prompt_cache: bool = True,
+        # Additional MLX generation parameters via **kwargs
+        **kwargs,
     ) -> GenerationResult:
         """Generate complete response.
 
@@ -330,10 +263,10 @@ class MLXGenerateWrapper:
             top_p: Top-p sampling value
             top_k: Top-k sampling value
             top_logprobs: Number of top logprobs to include (None to disable)
-            sampler_config: Advanced sampler configuration
-            generate_config: MLX generation configuration
-            template_config: Chat template configuration
+            sampler_kwargs: Additional sampler parameters for make_sampler
+            template_kwargs: Template parameters for chat tokenizer (enable_thinking, thinking_budget, etc.)
             enable_prompt_cache: Enable prompt caching
+            **kwargs: Additional MLX generation parameters (max_kv_size, kv_bits, repetition_penalty, etc.)
 
         Returns:
             Complete generation result
@@ -352,10 +285,10 @@ class MLXGenerateWrapper:
                 top_p,
                 top_k,
                 top_logprobs,
-                sampler_config,
-                generate_config,
-                template_config,
+                sampler_kwargs,
+                template_kwargs,
                 enable_prompt_cache,
+                **kwargs,
             ):
                 complete_text += result.text
                 final_result = result
@@ -368,14 +301,36 @@ class MLXGenerateWrapper:
             tool_calls = None
 
             # Step 1: Process reasoning first (extract <think> tags)
-            # Always extract reasoning when <think> tags are present
+            # Only extract reasoning when enabled
+            enable_reasoning = bool(
+                template_kwargs and template_kwargs.get("enable_thinking", True)
+            )
+            logger.info(
+                f"enable_reasoning: {enable_reasoning}, complete_text: {complete_text[:100]}..."
+            )
+            print(
+                f"enable_reasoning: {enable_reasoning}, complete_text: {complete_text[:100]}..."
+            )
             old_enable_thinking = self.reasoning_decoder.enable_thinking
-            self.reasoning_decoder.enable_thinking = True
+            self.reasoning_decoder.enable_thinking = enable_reasoning
             try:
-                reasoning_result = self.reasoning_decoder.decode(complete_text)
-                if reasoning_result:
-                    reasoning = reasoning_result.get("reasoning")
-                    complete_text = reasoning_result.get("content", complete_text)
+                if enable_reasoning:
+                    reasoning_result = self.reasoning_decoder.decode(complete_text)
+                    if reasoning_result:
+                        reasoning = reasoning_result.get("reasoning")
+                        complete_text = reasoning_result.get("content", complete_text)
+                        logger.debug(
+                            f"Extracted reasoning: {reasoning is not None}, new content: {complete_text[:50]}..."
+                        )
+                    else:
+                        logger.debug("No reasoning extracted")
+                        reasoning = None
+                else:
+                    # When reasoning is disabled, don't extract reasoning content
+                    reasoning = None
+                    logger.debug("Reasoning disabled, keeping original text")
+                    # Keep the original text as-is (don't process for reasoning)
+                    complete_text = complete_text
             finally:
                 self.reasoning_decoder.enable_thinking = old_enable_thinking
 
@@ -410,19 +365,21 @@ class MLXGenerateWrapper:
         self,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
-        # Common parameters promoted to function arguments
+        # Core generation parameters
         max_tokens: int = 2048,
         temperature: float = 1.0,
         top_p: float = 1.0,
-        top_k: Optional[int] = None,
+        top_k: int = 0,
         # Logprobs parameter (MLX style)
         top_logprobs: Optional[int] = None,
-        # Advanced configurations
-        sampler_config: Optional[SamplerConfig] = None,
-        generate_config: Optional[MLXGenerateConfig] = None,
-        template_config: Optional[ChatTemplateConfig] = None,
+        # Additional sampler parameters
+        sampler_kwargs: Optional[Dict[str, Any]] = None,
+        # Template parameters
+        template_kwargs: Optional[Dict[str, Any]] = None,
         # Control parameters
         enable_prompt_cache: bool = True,
+        # Additional MLX generation parameters via **kwargs
+        **kwargs,
     ) -> Generator[GenerationResult, None, None]:
         """Generate streaming response.
 
@@ -434,32 +391,24 @@ class MLXGenerateWrapper:
             top_p: Top-p sampling value
             top_k: Top-k sampling value
             top_logprobs: Number of top logprobs to include (None to disable)
-            sampler_config: Advanced sampler configuration
-            generate_config: MLX generation configuration
-            template_config: Chat template configuration
+            sampler_kwargs: Additional sampler parameters for make_sampler
+            template_kwargs: Template parameters for chat tokenizer (enable_thinking, thinking_budget, etc.)
             enable_prompt_cache: Enable prompt caching
+            **kwargs: Additional MLX generation parameters (max_kv_size, kv_bits, repetition_penalty, etc.)
 
         Yields:
             Streaming generation results
         """
         try:
-            # Prepare configurations
-            sampler_config, generate_config = self._prepare_configs(
-                max_tokens,
-                temperature,
-                top_p,
-                top_k,
-                top_logprobs,
-                sampler_config,
-                generate_config,
-            )
-
             # Determine processing flags from parameters
             enable_tools = bool(tools)
-            enable_reasoning = bool(template_config and template_config.enable_thinking)
+            enable_reasoning = bool(
+                template_kwargs and template_kwargs.get("enable_thinking", True)
+            )
+            logger.info(f"enable_reasoning: {enable_reasoning}")
 
             # Prepare prompt
-            prompt_str = self._prepare_prompt(messages, tools, template_config)
+            prompt_str = self._prepare_prompt(messages, tools, template_kwargs)
 
             # Tokenize prompt
             tokenized_prompt = self.tokenizer.encode(prompt_str)
@@ -473,12 +422,16 @@ class MLXGenerateWrapper:
                     self.model_cache, tokenized_prompt
                 )
 
-            # Setup reasoning decoder if enabled
-            if enable_reasoning:
-                self._setup_reasoning_decoder(template_config, prompt_str)
-
             # Create MLX kwargs
-            mlx_kwargs = self._create_mlx_kwargs(sampler_config, generate_config)
+            mlx_kwargs = self._create_mlx_kwargs(
+                temperature,
+                top_p,
+                top_k,
+                sampler_kwargs,
+                max_tokens=max_tokens,
+                top_logprobs=top_logprobs,
+                **kwargs,
+            )
 
             # Add cache to kwargs if available
             if enable_prompt_cache and self.prompt_cache.cache:
@@ -501,7 +454,7 @@ class MLXGenerateWrapper:
                 generated_tokens.append(response.token)
 
                 # Process logprobs if requested
-                logprobs = self._get_logprobs(response, generate_config.top_logprobs)
+                logprobs = self._get_logprobs(response, top_logprobs)
 
                 # Track completion text for reasoning processing
                 current_text = response.text
@@ -525,14 +478,11 @@ class MLXGenerateWrapper:
 
                 # Step 2: For tools, we need to process the accumulated text
                 # since tools usually require complete structures
-                if enable_tools and tools:
-                    # Try to decode tools from the accumulated completion text
-                    current_tool_calls = self.chat_tokenizer.decode(completion_text)
-                    # For streaming, we might want to show partial tool calls
-                    # but keep the original current_text for now
+                # if enable_tools and tools:
+                #     # Try to decode tools from the accumulated completion text
+                #     current_tool_calls = self.chat_tokenizer.decode(completion_text)
 
                 # Step 3: current_text now contains the processed content
-
                 yield GenerationResult(
                     text=current_text,
                     token=response.token,

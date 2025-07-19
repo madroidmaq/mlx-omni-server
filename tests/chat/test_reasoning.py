@@ -57,7 +57,7 @@ class TestReasoningResponse:
     def test_none_reasoning_response(self, openai_client):
         """Test functionality of the ReasoningResponse class"""
         try:
-            model = "mlx-community/DeepSeek-R1-Distill-Qwen-1.5B-4bit"
+            model = "mlx-community/Qwen3-0.6B-4bit"
             response = openai_client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": "hello"}],
@@ -76,10 +76,7 @@ class TestReasoningResponse:
             assert (
                 "</think>" not in choices.message.content
             ), "Message content is not correct"
-            assert (
-                not hasattr(choices.message, "reasoning")
-                or choices.message.reasoning is None
-            ), "Has reasoning in message"
+            assert choices.message.reasoning is None, "Has reasoning in message"
         except Exception as e:
             logger.error(f"Test error: {str(e)}")
             raise
