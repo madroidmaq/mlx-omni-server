@@ -27,24 +27,8 @@ class TestMLXGenerateWrapper:
         """Test basic initialization."""
         assert mlx_wrapper.model_cache is not None
         assert mlx_wrapper.tokenizer is not None
-        assert mlx_wrapper.chat_tokenizer is not None
-
-        # Lazy-loaded processors should be None initially
-        assert mlx_wrapper._reasoning_decoder is None
+        assert mlx_wrapper.chat_template is not None
         assert mlx_wrapper._prompt_cache is None
-
-    def test_lazy_processor_initialization(self, mlx_wrapper):
-        """Test lazy initialization of processors."""
-        # Accessing processors should initialize them
-        reasoning_decoder = mlx_wrapper.reasoning_decoder
-        prompt_cache = mlx_wrapper.prompt_cache
-
-        assert reasoning_decoder is not None
-        assert prompt_cache is not None
-
-        # Should be cached
-        assert mlx_wrapper.reasoning_decoder is reasoning_decoder
-        assert mlx_wrapper.prompt_cache is prompt_cache
 
     def test_basic_generate(self, mlx_wrapper):
         """Test basic text generation."""
@@ -120,21 +104,6 @@ class TestMLXGenerateWrapper:
         assert isinstance(result, GenerationResult)
         assert len(result.text) > 0
         # Note: logprobs might be None if not supported by model
-
-    def test_generate_with_thinking_mode(self, mlx_wrapper):
-        """Test generation with thinking/reasoning mode."""
-        messages = [{"role": "user", "content": "Solve 15 + 27"}]
-
-        template_kwargs = {"enable_thinking": True, "thinking_budget": 100}
-
-        result = mlx_wrapper.generate(
-            messages=messages, max_tokens=100, template_kwargs=template_kwargs
-        )
-
-        assert isinstance(result, GenerationResult)
-        assert len(result.text) > 0
-        # Note: gemma-3-1b-it is not a reasoning model, so reasoning will be None
-        # For actual reasoning models like Qwen3-0.6B-4bit, result.reasoning might contain content
 
     def test_stream_generate(self, mlx_wrapper):
         """Test streaming generation."""

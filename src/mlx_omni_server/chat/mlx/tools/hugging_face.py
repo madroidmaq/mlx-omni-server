@@ -1,28 +1,22 @@
 from typing import List, Optional
 
-from mlx_lm.tokenizer_utils import TokenizerWrapper
-
 from ....utils.logger import logger
 from ..core_types import ToolCall
-from .chat_tokenizer import ChatTokenizer
+from .base_tools import BaseToolParser
 from .utils import extract_tools
 
 
-class HuggingFaceChatTokenizer(ChatTokenizer):
+class HuggingFaceToolParser(BaseToolParser):
     """Tools handler for Llama models.
     https://huggingface.co/blog/unified-tool-use
     """
 
-    def __init__(self, tokenizer: TokenizerWrapper):
-        super().__init__(tokenizer)
+    def __init__(self):
         self.start_tool_calls = "<tool_call>\n"
         self.end_tool_calls = "</tool_call>"
         self.strict_mode = False
 
-    def decode_stream(self, text: str) -> Optional[List[ToolCall]]:
-        pass
-
-    def decode(self, text: str) -> Optional[List[ToolCall]]:
+    def parse_tools(self, text: str) -> Optional[List[ToolCall]]:
         """Parse tool calls from model output.
 
         Args:

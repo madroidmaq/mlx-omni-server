@@ -1,6 +1,5 @@
 """MLX Generate Wrapper - Core abstraction layer over mlx-lm."""
 
-from dataclasses import replace
 from typing import Any, Dict, Generator, List, Optional
 
 import mlx.core as mx
@@ -28,20 +27,8 @@ class MLXGenerateWrapper:
         """
         self.model_cache = model_cache
         self.tokenizer = model_cache.tokenizer
-        self.chat_tokenizer = model_cache.chat_tokenizer
-
-        # Processors will be initialized when needed
-        self._reasoning_decoder = None
+        self.chat_template = model_cache.chat_template
         self._prompt_cache = None
-
-    @property
-    def reasoning_decoder(self):
-        """Lazy initialization of reasoning decoder."""
-        if self._reasoning_decoder is None:
-            from .tools.reasoning_decoder import ReasoningDecoder
-
-            self._reasoning_decoder = ReasoningDecoder(self.tokenizer)
-        return self._reasoning_decoder
 
     @property
     def prompt_cache(self):
@@ -75,8 +62,10 @@ class MLXGenerateWrapper:
         if template_kwargs is None:
             template_kwargs = {}
 
-        prompt = self.chat_tokenizer.encode(
-            messages=messages, tools=tools, **template_kwargs
+        prompt = self.chat_template.apply_chat_template(
+            messages=messages,
+            tools=tools,
+            **template_kwargs,
         )
 
         logger.debug(f"Encoded prompt: {prompt}")
@@ -116,14 +105,7 @@ class MLXGenerateWrapper:
             "temp": temperature,
             "top_p": top_p,
             "top_k": top_k,
-            "min_p": 0.0,
-            "min_tokens_to_keep": 1,
-            "xtc_probability": 0.0,
-            "xtc_threshold": 0.0,
         }
-
-        if top_k is not None:
-            core_sampler_kwargs["top_k"] = top_k
 
         # Merge with additional sampler kwargs
         if sampler_kwargs:
@@ -144,6 +126,7 @@ class MLXGenerateWrapper:
             mlx_kwargs["logits_processors"] = existing_processors + new_processors
             handled_kwargs.add("repetition_penalty")
 
+        # TODO
         if kwargs.get("json_schema") is not None:
             from .outlines_logits_processor import OutlinesLogitsProcessor
 
@@ -221,18 +204,6 @@ class MLXGenerateWrapper:
             return self._process_logprobs(response, top_logprobs)
         return None
 
-    def _create_generation_stats(
-        self, response, cached_tokens: int = 0
-    ) -> GenerationStats:
-        return GenerationStats(
-            prompt_tokens=response.prompt_tokens,
-            completion_tokens=response.generation_tokens,
-            prompt_tps=response.prompt_tps,
-            generation_tps=response.generation_tps,
-            peak_memory=response.peak_memory,
-            cache_hit_tokens=cached_tokens,
-        )
-
     def generate(
         self,
         messages: List[Dict[str, Any]],
@@ -249,7 +220,7 @@ class MLXGenerateWrapper:
         # Template parameters
         template_kwargs: Optional[Dict[str, Any]] = None,
         # Control parameters
-        enable_prompt_cache: bool = True,
+        enable_prompt_cache: bool = False,
         # Additional MLX generation parameters via **kwargs
         **kwargs,
     ) -> GenerationResult:
@@ -274,8 +245,8 @@ class MLXGenerateWrapper:
         try:
             # Generate complete response by collecting stream.
             # stream_generate handles the preparation of configurations.
-            complete_text = ""
-            final_result = None
+            complete_raw_text = ""
+            final_result_from_stream = None
 
             for result in self.stream_generate(
                 messages,
@@ -290,72 +261,31 @@ class MLXGenerateWrapper:
                 enable_prompt_cache,
                 **kwargs,
             ):
-                complete_text += result.text
-                final_result = result
+                if result.raw_delta:
+                    complete_raw_text += result.raw_delta
+                final_result_from_stream = result
 
-            if final_result is None:
+            if final_result_from_stream is None:
                 raise RuntimeError("No tokens generated")
 
-            # Process in correct order: reasoning → tools → plain text
-            reasoning = None
-            tool_calls = None
-
-            # Step 1: Process reasoning first (extract <think> tags)
-            # Only extract reasoning when enabled
-            enable_reasoning = bool(
-                template_kwargs and template_kwargs.get("enable_thinking", True)
-            )
-            logger.info(
-                f"enable_reasoning: {enable_reasoning}, complete_text: {complete_text[:100]}..."
-            )
-            old_enable_thinking = self.reasoning_decoder.enable_thinking
-            self.reasoning_decoder.enable_thinking = enable_reasoning
-            try:
-                if enable_reasoning:
-                    reasoning_result = self.reasoning_decoder.decode(complete_text)
-                    if reasoning_result:
-                        reasoning = reasoning_result.get("reasoning")
-                        complete_text = reasoning_result.get("content", complete_text)
-                        logger.debug(
-                            f"Extracted reasoning: {reasoning is not None}, new content: {complete_text[:50]}..."
-                        )
-                    else:
-                        logger.debug("No reasoning extracted")
-                        reasoning = None
-                else:
-                    # When reasoning is disabled, don't extract reasoning content
-                    reasoning = None
-                    logger.debug("Reasoning disabled, removing think tags")
-                    # Remove think tags even when reasoning is disabled
-                    reasoning_result = self.reasoning_decoder.decode(complete_text)
-                    if reasoning_result:
-                        complete_text = reasoning_result.get("content", complete_text)
-                    else:
-                        complete_text = complete_text
-            finally:
-                self.reasoning_decoder.enable_thinking = old_enable_thinking
-
-            # Step 2: Process tools from remaining content
-            if tools:
-                tool_calls = self.chat_tokenizer.decode(complete_text)
-
-            # Step 3: Remaining content is plain text (already in complete_text)
+            logger.info(f"Model Response:\n{complete_raw_text}")
+            chat_result = self.chat_template.parse_chat_response(complete_raw_text)
 
             # Determine appropriate finish_reason
-            finish_reason = final_result.finish_reason
-            if tool_calls:
+            finish_reason = final_result_from_stream.finish_reason
+            if chat_result.tool_calls:
                 finish_reason = "tools"
 
             # Return final result with all processing applied
             return GenerationResult(
-                text=complete_text,
-                token=final_result.token,
+                text=chat_result.content,
+                token=final_result_from_stream.token,
                 finish_reason=finish_reason,
-                stats=final_result.stats,
-                tool_calls=tool_calls,
-                reasoning=reasoning,
-                logprobs=final_result.logprobs,
-                from_draft=final_result.from_draft,
+                stats=final_result_from_stream.stats,
+                tool_calls=chat_result.tool_calls,
+                reasoning=chat_result.thinking,
+                logprobs=final_result_from_stream.logprobs,
+                from_draft=final_result_from_stream.from_draft,
             )
 
         except Exception as e:
@@ -368,7 +298,7 @@ class MLXGenerateWrapper:
         tools: Optional[List[Dict[str, Any]]] = None,
         # Core generation parameters
         max_tokens: int = 2048,
-        temperature: float = 1.0,
+        temperature: float = 0.8,
         top_p: float = 1.0,
         top_k: int = 0,
         # Logprobs parameter (MLX style)
@@ -378,7 +308,7 @@ class MLXGenerateWrapper:
         # Template parameters
         template_kwargs: Optional[Dict[str, Any]] = None,
         # Control parameters
-        enable_prompt_cache: bool = True,
+        enable_prompt_cache: bool = False,
         # Additional MLX generation parameters via **kwargs
         **kwargs,
     ) -> Generator[GenerationResult, None, None]:
@@ -401,18 +331,12 @@ class MLXGenerateWrapper:
             Streaming generation results
         """
         try:
-            # Determine processing flags from parameters
-            enable_tools = bool(tools)
-            enable_reasoning = bool(
-                template_kwargs and template_kwargs.get("enable_thinking", True)
-            )
-            logger.info(f"enable_reasoning: {enable_reasoning}")
 
             # Prepare prompt
-            prompt_str = self._prepare_prompt(messages, tools, template_kwargs)
+            prompt = self._prepare_prompt(messages, tools, template_kwargs)
 
             # Tokenize prompt
-            tokenized_prompt = self.tokenizer.encode(prompt_str)
+            tokenized_prompt = self.tokenizer.encode(prompt)
 
             # Process cache if enabled
             processed_prompt = tokenized_prompt
@@ -440,7 +364,6 @@ class MLXGenerateWrapper:
 
             # Stream generation
             generated_tokens = []
-            completion_text = ""
 
             for response in stream_generate(
                 model=self.model_cache.model,
@@ -457,42 +380,28 @@ class MLXGenerateWrapper:
                 # Process logprobs if requested
                 logprobs = self._get_logprobs(response, top_logprobs)
 
-                # Track completion text for reasoning processing
-                current_text = response.text
-                completion_text += current_text
+                parse_result = self.chat_template.stream_parse_chat_result(
+                    response.text
+                )
 
-                # Process in correct order for streaming: reasoning → tools → plain text
-                current_reasoning = None
-                current_tool_calls = None
-
-                # Step 1: Process reasoning for streaming if enabled
-                if enable_reasoning:
-                    reasoning_result = self.reasoning_decoder.stream_decode(
-                        current_text
-                    )
-                    if reasoning_result:
-                        # Use processed content if available
-                        if reasoning_result.get("delta_content") is not None:
-                            current_text = reasoning_result.get("delta_content")
-                        # Extract reasoning data if available
-                        current_reasoning = reasoning_result.get("delta_reasoning")
-
-                # Step 2: For tools, we need to process the accumulated text
-                # since tools usually require complete structures
-                # if enable_tools and tools:
-                #     # Try to decode tools from the accumulated completion text
-                #     current_tool_calls = self.chat_tokenizer.decode(completion_text)
-
-                # Step 3: current_text now contains the processed content
+                stats = GenerationStats(
+                    prompt_tokens=response.prompt_tokens,
+                    completion_tokens=response.generation_tokens,
+                    prompt_tps=response.prompt_tps,
+                    generation_tps=response.generation_tps,
+                    peak_memory=response.peak_memory,
+                    cache_hit_tokens=cached_tokens,
+                )
                 yield GenerationResult(
-                    text=current_text,
+                    text=parse_result.content,
                     token=response.token,
                     finish_reason=response.finish_reason,
-                    stats=self._create_generation_stats(response, cached_tokens),
-                    tool_calls=current_tool_calls,
-                    reasoning=current_reasoning,
+                    stats=stats,
+                    tool_calls=None,
+                    reasoning=parse_result.thinking,
                     logprobs=logprobs,
                     from_draft=response.from_draft,
+                    raw_delta=response.text,
                 )
 
             # Extend cache with generated tokens if caching is enabled

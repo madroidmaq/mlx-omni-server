@@ -2,47 +2,21 @@ import json
 import uuid
 from typing import List, Optional
 
-from mlx_lm.tokenizer_utils import TokenizerWrapper
-
 from mlx_omni_server.utils.logger import logger
 
-from ...schema import SpecificToolChoice, Tool, ToolChoiceType
+from ..core_types import ToolCall
 from ..core_types import ToolCall as CoreToolCall
-from .chat_tokenizer import ChatTokenizer
+from .base_tools import BaseToolParser
 
 
-class Llama3ChatTokenizer(ChatTokenizer):
+class Llama3ToolParser(BaseToolParser):
     """Tools handler for Llama models."""
 
-    def __init__(self, tokenizer: TokenizerWrapper):
-        super().__init__(tokenizer)
+    def __init__(self):
         self.start_tool_calls = "<|python_tag|>"
         self.end_tool_calls = ""
         self.strict_mode = False
         self.pre_fill_tools_prompt = ""
-
-    def decode_stream(self, text: str) -> Optional[List[CoreToolCall]]:
-        pass
-
-    def encode(
-        self,
-        messages: List[dict],
-        tools: Optional[List[Tool]] = None,
-        tool_choice: Optional[ToolChoiceType] = None,
-        **kwargs,
-    ) -> str:
-        prompt = super().encode(messages, tools, tool_choice, **kwargs)
-
-        if tools:
-            if isinstance(tool_choice, SpecificToolChoice):
-                self.pre_fill_tools_prompt += self.start_tool_calls
-                function_name = tool_choice.function["name"]
-
-                self.pre_fill_tools_prompt += (
-                    f"""{{"name": "{function_name}", "arguments":"""
-                )
-
-        return prompt + self.pre_fill_tools_prompt
 
     def _parse_strict_tools(self, text: str) -> Optional[List[CoreToolCall]]:
         tool_calls = []
@@ -72,7 +46,7 @@ class Llama3ChatTokenizer(ChatTokenizer):
 
         return tool_calls if tool_calls else None
 
-    def decode(self, text: str) -> Optional[List[CoreToolCall]]:
+    def parse_tools(self, text: str) -> Optional[List[ToolCall]]:
         """Parse tool calls from model output.
 
         Args:

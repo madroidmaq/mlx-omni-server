@@ -2,24 +2,19 @@ import json
 import uuid
 from typing import List, Optional
 
-from mlx_lm.tokenizer_utils import TokenizerWrapper
-
+from ..core_types import ToolCall
 from ..core_types import ToolCall as CoreToolCall
-from .chat_tokenizer import ChatTokenizer
+from .base_tools import BaseToolParser
 
 
-class MistralChatTokenizer(ChatTokenizer):
+class MistralToolsParser(BaseToolParser):
     """Tools handler for Llama models."""
 
-    def __init__(self, tokenizer: TokenizerWrapper):
-        super().__init__(tokenizer)
+    def __init__(self):
         self.start_tool_calls = "[TOOL_CALLS]"
         self.end_tool_calls = ""
 
-    def decode_stream(self, text: str) -> Optional[List[CoreToolCall]]:
-        pass
-
-    def decode(self, text: str) -> Optional[List[CoreToolCall]]:
+    def parse_tools(self, text: str) -> Optional[List[ToolCall]]:
         """Parse tool calls from model output.
 
         The model outputs function calls in the format:

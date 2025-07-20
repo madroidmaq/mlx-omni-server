@@ -1,29 +1,40 @@
 from dataclasses import dataclass
-from typing import Optional, Type
+from typing import Optional
 
 import mlx.nn as nn
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 from mlx_lm.utils import get_model_path, load, load_config
 
 from ...utils.logger import logger
-from .tools.chat_tokenizer import ChatTokenizer
-from .tools.hugging_face import HuggingFaceChatTokenizer
-from .tools.llama3 import Llama3ChatTokenizer
-from .tools.mistral import MistralChatTokenizer
+from .tools.base_tools import BaseToolParser
+from .tools.chat_template import ChatTemplate
+from .tools.hugging_face import HuggingFaceToolParser
+from .tools.llama3 import Llama3ToolParser
+from .tools.mistral import MistralToolsParser
+
+# def load_tools_handler(model_type: str, tokenizer: TokenizerWrapper) -> ChatTokenizer:
+#     """Factory function to load appropriate tools handler based on model ID."""
+#     handlers: dict[str, Type[ChatTokenizer]] = {
+#         # Llama models
+#         "llama": Llama3ChatTokenizer,
+#         "mistral": MistralChatTokenizer,
+#         "qwen2": HuggingFaceChatTokenizer,
+#     }
+#
+#     # Get handler class based on model ID or use HuggingFace handler as default
+#     handler_class = handlers.get(model_type, HuggingFaceChatTokenizer)
+#     return handler_class(tokenizer)
 
 
-def load_tools_handler(model_type: str, tokenizer: TokenizerWrapper) -> ChatTokenizer:
-    """Factory function to load appropriate tools handler based on model ID."""
-    handlers: dict[str, Type[ChatTokenizer]] = {
-        # Llama models
-        "llama": Llama3ChatTokenizer,
-        "mistral": MistralChatTokenizer,
-        "qwen2": HuggingFaceChatTokenizer,
-    }
-
-    # Get handler class based on model ID or use HuggingFace handler as default
-    handler_class = handlers.get(model_type, HuggingFaceChatTokenizer)
-    return handler_class(tokenizer)
+# def load_tools_parser(model_type: str) -> BaseToolParser:
+#     if model_type == "llama":
+#         return Llama3ToolParser()
+#     if model_type == "mistral":
+#         return MistralToolsParser()
+#     if model_type == "qwen2" or model_type == "qwen3":
+#         return HuggingFaceToolParser()
+#     else:
+#         return HuggingFaceToolParser()
 
 
 @dataclass(frozen=True)
@@ -65,6 +76,7 @@ class MlxModelCache:
         self.model: Optional[nn.Module] = None
         self.tokenizer: Optional[TokenizerWrapper] = None
         self.chat_tokenizer = None
+        self.chat_template: Optional[ChatTemplate] = None
         self.draft_model: Optional[nn.Module] = None
         self.draft_tokenizer: Optional[TokenizerWrapper] = None
 
@@ -85,7 +97,8 @@ class MlxModelCache:
         # Load configuration and create chat tokenizer
         model_path = get_model_path(self.model_id.name)
         config = load_config(model_path)
-        self.chat_tokenizer = load_tools_handler(config["model_type"], self.tokenizer)
+        # self.chat_tokenizer = load_tools_parser(config["model_type"], )
+        self.chat_template = ChatTemplate(config["model_type"], self.tokenizer)
 
         # If needed, load the draft model
         if self.model_id.draft_model:

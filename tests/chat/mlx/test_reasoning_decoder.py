@@ -13,15 +13,9 @@ class TestReasoningDecoder:
     """Test functionality of the ReasoningDecoder class"""
 
     @pytest.fixture
-    def tokenizer_mock(self):
-        """Create a mock object for TokenizerWrapper"""
-        tokenizer_mock = MagicMock()
-        return tokenizer_mock
-
-    @pytest.fixture
-    def decoder(self, tokenizer_mock):
+    def decoder(self):
         """Create a ReasoningDecoder instance"""
-        decoder = ReasoningDecoder(tokenizer_mock)
+        decoder = ReasoningDecoder()
         return decoder
 
     def test_parse_response_with_thinking(self, decoder):
@@ -54,7 +48,6 @@ class TestReasoningDecoder:
         """Test decode method with thinking mode enabled"""
         # Prepare test data
         test_text = "<think>Reasoning process</think>Final answer"
-        decoder.enable_thinking = True
 
         # Execute test
         result = decoder.decode(test_text)
@@ -62,19 +55,6 @@ class TestReasoningDecoder:
         # Verify results
         assert result["reasoning"] == "Reasoning process"
         assert result["content"] == "Final answer"
-
-    def test_decode_with_thinking_disabled(self, decoder):
-        """Test decode method with thinking mode disabled"""
-        # Prepare test data
-        test_text = "<think>Reasoning process</think>Final answer"
-        decoder.enable_thinking = False
-
-        # Execute test
-        result = decoder.decode(test_text)
-
-        # Verify results
-        assert result["content"] == test_text
-        assert "reasoning" not in result
 
     def test_set_thinking_prefix(self, decoder):
         """Test the set_thinking_prefix method"""

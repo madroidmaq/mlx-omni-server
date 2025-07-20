@@ -1,17 +1,11 @@
-import json
 import unittest
-from unittest.mock import Mock
 
-from mlx_lm.tokenizer_utils import TokenizerWrapper
-
-from mlx_omni_server.chat.mlx.core_types import ToolCall
-from mlx_omni_server.chat.mlx.tools.llama3 import Llama3ChatTokenizer
+from mlx_omni_server.chat.mlx.tools.llama3 import Llama3ToolParser
 
 
-class TestLlama3ChatTokenizer(unittest.TestCase):
+class TestLlama3ToolParser(unittest.TestCase):
     def setUp(self):
-        mock_tokenizer = Mock(spec=TokenizerWrapper)
-        self.tokenizer = Llama3ChatTokenizer(mock_tokenizer)
+        self.tool_parser = Llama3ToolParser()
         self.invalid_responses = [
             """<?xml version="1.0" encoding="UTF-8"?>
             <json>
@@ -39,10 +33,10 @@ This JSON represents a function call to `get_current_weather` with the location 
 
     def test_strict_mode_decode_single_tool_call(self):
         # Test single tool call with double quotes
-        self.tokenizer.strict_mode = True
+        self.tool_parser.strict_mode = True
 
         text = """<|python_tag|>{"name": "get_current_weather", "parameters": {"location": "Boston, MA", "unit": "fahrenheit"}}"""
-        result = self.tokenizer.decode(text)
+        result = self.tool_parser.parse_tools(text)
 
         self.assertIsNotNone(result)
         self.assertEqual(len(result), 1)
@@ -55,7 +49,7 @@ This JSON represents a function call to `get_current_weather` with the location 
 
     def test_strict_mode_rejects_loose_format(self):
         # 确保严格模式下拒绝非标准格式
-        self.tokenizer.strict_mode = True
+        self.tool_parser.strict_mode = True
 
         # Test with <response> tag (should fail in strict mode)
         text = """<response>
@@ -64,7 +58,7 @@ This JSON represents a function call to `get_current_weather` with the location 
           "arguments": {"location": "Boston, MA", "unit": "fahrenheit"}
         }
         </response>"""
-        result = self.tokenizer.decode(text)
+        result = self.tool_parser.parse_tools(text)
 
         self.assertIsNone(result)  # 应该返回 None
 
@@ -73,7 +67,7 @@ This JSON represents a function call to `get_current_weather` with the location 
         text = """<tool_call>
     {"arguments": {"location": "Boston, MA"}}
     </tool_call>"""
-        result = self.tokenizer.decode(text)
+        result = self.tool_parser.parse_tools(text)
 
         self.assertIsNone(result)  # Should return None for invalid format
 
@@ -81,7 +75,7 @@ This JSON represents a function call to `get_current_weather` with the location 
         # Test invalid JSON format
 
         for text in self.invalid_responses:
-            result = self.tokenizer.decode(text)
+            result = self.tool_parser.parse_tools(text)
 
             self.assertIsNotNone(result)
             self.assertEqual(len(result), 1)

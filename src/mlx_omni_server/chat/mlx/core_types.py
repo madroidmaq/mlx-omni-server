@@ -30,6 +30,13 @@ class GenerationStats:
 
 
 @dataclass
+class ChatTemplateResult:
+    content: str
+    thinking: Optional[str] = None
+    tool_calls: Optional[List[ToolCall]] = None
+
+
+@dataclass
 class GenerationResult:
     """Unified generation result format for all API platforms.
 
@@ -52,3 +59,6 @@ class GenerationResult:
 
     # Draft model info (for speculative decoding)
     from_draft: bool = False
+
+    # Raw delta for non-streaming reconstruction
+    raw_delta: Optional[str] = None

@@ -1,8 +1,6 @@
 import re
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
-
-from mlx_lm.tokenizer_utils import TokenizerWrapper
+from typing import Any, Dict, Optional
 
 
 class TokensDecoder(ABC):
@@ -22,12 +20,10 @@ class ReasoningDecoder(TokensDecoder):
     """Base class for reasoning decoders."""
 
     thinking_tag: str = "think"
-    enable_thinking: bool = False
     add_thinking_prefix: bool = False
     accumulated_text: str = ""
 
-    def __init__(self, tokenizer: TokenizerWrapper):
-        self.tokenizer = tokenizer
+    def __init__(self):
         self.accumulated_text = ""
 
     def set_thinking_prefix(self, add_thinking_prefix: bool) -> None:
@@ -80,9 +76,6 @@ class ReasoningDecoder(TokensDecoder):
 
     def stream_decode(self, text: str) -> Optional[Dict[str, Any]]:
         """Parse tool calls from model output."""
-        if not self.enable_thinking:
-            return {"delta_content": text}
-
         return self._parse_stream_response(text)
 
     def _parse_response(self, response: str):
@@ -124,7 +117,4 @@ class ReasoningDecoder(TokensDecoder):
 
     def decode(self, text: str) -> Optional[Dict[str, Any]]:
         """Parse thinking content from model output"""
-        if self.enable_thinking:
-            return self._parse_response(text)
-
-        return {"content": text}
+        return self._parse_response(text)
