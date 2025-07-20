@@ -2,8 +2,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Query
 
+from .models_service import AnthropicModelsService
 from .schema import AnthropicModelList
-from .service import AnthropicModelsService
 
 router = APIRouter(tags=["anthropic"])
 models_service = AnthropicModelsService()
