@@ -14,11 +14,10 @@ from mlx_omni_server.chat.schema import (
     ChatMessage,
     Role,
 )
-from mlx_omni_server.chat.text_models import BaseTextModel
 from mlx_omni_server.utils.logger import logger
 
 
-class OpenAIAdapter(BaseTextModel):
+class OpenAIAdapter:
     """MLX Chat Model wrapper with internal parameter management"""
 
     def __init__(
@@ -63,10 +62,6 @@ class OpenAIAdapter(BaseTextModel):
             if key in extra_params:
                 template_kwargs[key] = extra_params[key]
 
-        # Only set default if not explicitly provided
-        if "enable_thinking" not in template_kwargs:
-            template_kwargs["enable_thinking"] = True
-
         # Convert messages to dict format
         messages = [
             {
@@ -91,6 +86,10 @@ class OpenAIAdapter(BaseTextModel):
         logger.info(f"messages: {messages}")
         logger.info(f"template_kwargs: {template_kwargs}")
 
+        json_schema = None
+        if request.response_format and request.response_format.json_schema:
+            json_schema = request.response_format.json_schema.schema_def
+
         return {
             "messages": messages,
             "tools": tools,
@@ -103,9 +102,7 @@ class OpenAIAdapter(BaseTextModel):
             "template_kwargs": template_kwargs,
             "enable_prompt_cache": True,
             "repetition_penalty": request.presence_penalty,
-            "json_schema": (
-                request.response_format.json_schema if request.response_format else None
-            ),
+            "json_schema": json_schema,
         }
 
     def generate(
@@ -128,11 +125,10 @@ class OpenAIAdapter(BaseTextModel):
 
             # Use wrapper's chat tokenizer for tool processing
             if request.tools:
-                tool_calls = self._generate_wrapper.chat_tokenizer.decode(final_content)
                 message = ChatMessage(
                     role=Role.ASSISTANT,
                     content=final_content,
-                    tool_calls=tool_calls,
+                    tool_calls=result.tool_calls,
                     reasoning=reasoning_content,
                 )
             else:
@@ -192,21 +188,12 @@ class OpenAIAdapter(BaseTextModel):
             # Prepare parameters
             params = self._prepare_generation_params(request)
 
-            # Directly use wrapper's stream_generate method
             result = None
             for stream_result in self._generate_wrapper.stream_generate(**params):
                 created = int(time.time())
 
-                # Use wrapper's chat tokenizer for tool processing
-                if request.tools:
-                    message = self._generate_wrapper.chat_tokenizer.decode(
-                        stream_result.text
-                    )
-                else:
-                    # For streaming, reasoning is handled by the decoder
-                    message = ChatMessage(
-                        role=Role.ASSISTANT, content=stream_result.text
-                    )
+                # TODO: support streaming tools parse
+                message = ChatMessage(role=Role.ASSISTANT, content=stream_result.text)
 
                 yield ChatCompletionChunk(
                     id=chat_id,

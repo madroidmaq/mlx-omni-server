@@ -5,9 +5,9 @@ from typing import Generator, Optional
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .mlx.models import ModelId, load_model
+from .mlx.models import ModelId, load_openai_adapter
+from .openai_adapter import OpenAIAdapter
 from .schema import ChatCompletionRequest, ChatCompletionResponse
-from .text_models import BaseTextModel
 
 router = APIRouter(tags=["chat—completions"])
 
@@ -47,7 +47,7 @@ def _create_text_model(
     model_id: str,
     adapter_path: Optional[str] = None,
     draft_model: Optional[str] = None,
-) -> BaseTextModel:
+) -> OpenAIAdapter:
     """Create a text model based on the model parameters.
 
     Creates a ModelId object and passes it to load_model function.
@@ -57,4 +57,4 @@ def _create_text_model(
         name=model_id, adapter_path=adapter_path, draft_model=draft_model
     )
 
-    return load_model(current_key)
+    return load_openai_adapter(current_key)

@@ -36,6 +36,9 @@ class TestReasoningResponse:
             response = openai_client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": "hello"}],
+                extra_body={
+                    "enable_thinking": True,
+                },
             )
             logger.info(f"Chat Completion Response:\n{response.choices[0].message}\n")
 

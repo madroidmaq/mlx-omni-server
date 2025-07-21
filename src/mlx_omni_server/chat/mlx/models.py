@@ -1,6 +1,5 @@
 from mlx_omni_server.chat.openai_adapter import OpenAIAdapter
 
-from ..text_models import BaseTextModel
 from .model_types import MlxModelCache, ModelId
 
 # Initialize global cache objects
@@ -8,7 +7,7 @@ _model_cache = None
 _mlx_model_cache = None
 
 
-def load_model(model_id: ModelId) -> BaseTextModel:
+def load_openai_adapter(model_id: ModelId) -> OpenAIAdapter:
     """Load the model and return a BaseTextModel instance.
 
     Args:

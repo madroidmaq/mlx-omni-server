@@ -5,6 +5,7 @@ import pytest
 from mlx_omni_server.chat.mlx.core_types import GenerationResult, ToolCall
 from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
 from mlx_omni_server.chat.mlx.model_types import MlxModelCache, ModelId
+from mlx_omni_server.utils.logger import logger
 
 
 @pytest.fixture
@@ -111,6 +112,7 @@ class TestMLXGenerateWrapper:
 
         results = []
         for result in mlx_wrapper.stream_generate(messages=messages, max_tokens=30):
+            logger.info(f"Stream response: {result.text}")
             results.append(result)
             assert isinstance(result, GenerationResult)
             assert isinstance(result.text, str)
@@ -218,15 +220,17 @@ class TestMLXGenerateWrapper:
 
         template_kwargs = {"enable_thinking": True}
 
-        results = []
+        content = ""
+        reasoning = ""
         for result in reasoning_wrapper.stream_generate(
-            messages=messages, max_tokens=80, template_kwargs=template_kwargs
+            messages=messages, template_kwargs=template_kwargs
         ):
-            results.append(result)
+            content = content + result.text
+            if result.reasoning:
+                reasoning = reasoning + result.reasoning
 
-        assert len(results) > 0
-        final_text = "".join(result.text for result in results)
-        assert len(final_text) > 0
+        assert len(content) > 0
+        assert len(reasoning) > 0
 
     def test_reasoning_model_qwen(self):
         """Test with actual reasoning model (Qwen3-0.6B-4bit) - optional test."""
