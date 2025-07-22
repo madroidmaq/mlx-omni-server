@@ -100,11 +100,18 @@ class TestMLXGenerateWrapper:
         """Test generation with logprobs enabled."""
         messages = [{"role": "user", "content": "Hi"}]
 
-        result = mlx_wrapper.generate(messages=messages, max_tokens=5, top_logprobs=3)
+        top_logprobs_count = 3
+        result = mlx_wrapper.generate(
+            messages=messages, max_tokens=5, top_logprobs=top_logprobs_count
+        )
+
+        logger.info(result.logprobs)
 
         assert isinstance(result, GenerationResult)
-        assert len(result.text) > 0
-        # Note: logprobs might be None if not supported by model
+        assert result.logprobs is not None
+
+        top_logprobs = result.logprobs["top_logprobs"]
+        assert len(top_logprobs) == top_logprobs_count
 
     def test_stream_generate(self, mlx_wrapper):
         """Test streaming generation."""
@@ -225,9 +232,13 @@ class TestMLXGenerateWrapper:
         for result in reasoning_wrapper.stream_generate(
             messages=messages, template_kwargs=template_kwargs
         ):
+
             content = content + result.text
             if result.reasoning:
                 reasoning = reasoning + result.reasoning
+
+        print(f"Reasoning: {reasoning}")
+        print(f"content: {content}")
 
         assert len(content) > 0
         assert len(reasoning) > 0

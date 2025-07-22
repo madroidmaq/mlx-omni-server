@@ -8,6 +8,7 @@ from mlx_lm.sample_utils import make_sampler
 
 from ...utils.logger import logger
 from .core_types import GenerationResult, GenerationStats
+from .logprobs_processor import LogprobsProcessor
 from .model_types import MlxModelCache
 
 
@@ -29,6 +30,7 @@ class MLXGenerateWrapper:
         self.tokenizer = model_cache.tokenizer
         self.chat_template = model_cache.chat_template
         self._prompt_cache = None
+        self._logprobs_processor = None
 
     @property
     def prompt_cache(self):
@@ -38,6 +40,13 @@ class MLXGenerateWrapper:
 
             self._prompt_cache = PromptCache()
         return self._prompt_cache
+
+    @property
+    def logprobs_processor(self):
+        """Lazy initialization of logprobs processor."""
+        if self._logprobs_processor is None:
+            self._logprobs_processor = LogprobsProcessor(self.tokenizer)
+        return self._logprobs_processor
 
     def _prepare_prompt(
         self,
@@ -78,7 +87,6 @@ class MLXGenerateWrapper:
         top_k: int,
         sampler_kwargs: Optional[Dict[str, Any]],
         max_tokens: int = 2048,
-        top_logprobs: Optional[int] = None,
         **kwargs,
     ) -> Dict[str, Any]:
         """Convert parameters to mlx-lm compatible kwargs.
@@ -89,7 +97,6 @@ class MLXGenerateWrapper:
             top_k: Top-k sampling value
             sampler_kwargs: Additional sampler parameters
             max_tokens: int = 2048,
-            top_logprobs: Optional[int] = None,
             **kwargs
 
         Returns:
@@ -114,95 +121,42 @@ class MLXGenerateWrapper:
         mlx_kwargs["sampler"] = make_sampler(**core_sampler_kwargs)
 
         # Handle special cases that need preprocessing
-        handled_kwargs = set()
+        # Note: Order matters - processors are applied sequentially
+        logits_processors = []
 
-        if kwargs.get("repetition_penalty") is not None:
+        # 1. Repetition penalty (should come first to avoid repetitive text)
+        repetition_penalty = kwargs.pop("repetition_penalty", None)
+        if repetition_penalty is not None:
             from mlx_lm.sample_utils import make_logits_processors
 
-            existing_processors = mlx_kwargs.get("logits_processors", [])
-            new_processors = make_logits_processors(
-                repetition_penalty=kwargs["repetition_penalty"]
-            )
-            mlx_kwargs["logits_processors"] = existing_processors + new_processors
-            handled_kwargs.add("repetition_penalty")
+            processors = make_logits_processors(repetition_penalty=repetition_penalty)
+            logits_processors.extend(processors)
 
-        # TODO
-        if kwargs.get("json_schema") is not None:
+        # 2. JSON schema processor (should come after repetition penalty)
+        json_schema = kwargs.pop("json_schema", None)
+        if json_schema is not None:
             from .outlines_logits_processor import OutlinesLogitsProcessor
 
-            logits_processors = mlx_kwargs.get("logits_processors", [])
             logits_processors.append(
-                OutlinesLogitsProcessor(self.tokenizer, kwargs["json_schema"])
+                OutlinesLogitsProcessor(self.tokenizer, json_schema)
             )
+
+        # Add existing processors from kwargs if any
+        if "logits_processors" in kwargs:
+            existing_processors = kwargs.pop("logits_processors", [])
+            if existing_processors:
+                logits_processors.extend(existing_processors)
+
+        # Set logits processors if any were created
+        if logits_processors:
             mlx_kwargs["logits_processors"] = logits_processors
-            handled_kwargs.add("json_schema")
 
         # Handle remaining valid kwargs
         for key, value in kwargs.items():
-            if key not in handled_kwargs and value is not None:
+            if value is not None:
                 mlx_kwargs[key] = value
 
         return mlx_kwargs
-
-    def _process_logprobs(
-        self, response, top_k: Optional[int]
-    ) -> Optional[Dict[str, Any]]:
-        """Process logprobs from MLX response.
-
-        Args:
-            response: MLX response object
-            top_k: Number of top logprobs to include
-
-        Returns:
-            Processed logprobs dictionary or None
-        """
-        if not hasattr(response, "logprobs") or response.logprobs is None:
-            return None
-
-        current_token = response.token
-        current_logprobs = response.logprobs
-
-        token_str = self.tokenizer.decode([current_token])
-        token_logprob = mx.clip(
-            current_logprobs[current_token], a_min=-100, a_max=None
-        ).item()
-        token_bytes = token_str.encode("utf-8")
-
-        token_info = {
-            "token": token_str,
-            "logprob": token_logprob,
-            "bytes": list(token_bytes),
-        }
-
-        top_logprobs = []
-        if top_k is not None:
-            top_indices = mx.argpartition(-current_logprobs, kth=top_k - 1)[:top_k]
-            top_probs = mx.clip(current_logprobs[top_indices], a_min=-100, a_max=None)
-
-            for idx, logprob in zip(top_indices.tolist(), top_probs.tolist()):
-                token = self.tokenizer.decode([idx])
-                token_bytes = token.encode("utf-8")
-                top_logprobs.append(
-                    {"token": token, "logprob": logprob, "bytes": list(token_bytes)}
-                )
-
-        return {**token_info, "top_logprobs": top_logprobs}
-
-    def _get_logprobs(
-        self, response, top_logprobs: Optional[int]
-    ) -> Optional[Dict[str, Any]]:
-        """Get logprobs from response if requested.
-
-        Args:
-            response: MLX response object
-            top_logprobs: Number of top logprobs to include
-
-        Returns:
-            Processed logprobs dictionary or None
-        """
-        if top_logprobs is not None:
-            return self._process_logprobs(response, top_logprobs)
-        return None
 
     def generate(
         self,
@@ -213,7 +167,6 @@ class MLXGenerateWrapper:
         temperature: float = 1.0,
         top_p: float = 1.0,
         top_k: int = 0,
-        # Logprobs parameter (MLX style)
         top_logprobs: Optional[int] = None,
         # Additional sampler parameters
         sampler_kwargs: Optional[Dict[str, Any]] = None,
@@ -301,7 +254,6 @@ class MLXGenerateWrapper:
         temperature: float = 0.8,
         top_p: float = 1.0,
         top_k: int = 0,
-        # Logprobs parameter (MLX style)
         top_logprobs: Optional[int] = None,
         # Additional sampler parameters
         sampler_kwargs: Optional[Dict[str, Any]] = None,
@@ -354,7 +306,6 @@ class MLXGenerateWrapper:
                 top_k,
                 sampler_kwargs,
                 max_tokens=max_tokens,
-                top_logprobs=top_logprobs,
                 **kwargs,
             )
 
@@ -378,7 +329,11 @@ class MLXGenerateWrapper:
                 generated_tokens.append(response.token)
 
                 # Process logprobs if requested
-                logprobs = self._get_logprobs(response, top_logprobs)
+                logprobs = None
+                if top_logprobs is not None:
+                    logprobs = self.logprobs_processor.get_logprobs(
+                        response, top_logprobs
+                    )
 
                 parse_result = self.chat_template.stream_parse_chat_result(
                     response.text
