@@ -1,30 +1,31 @@
 import json
-from typing import List, Union
+from typing import Any, Dict, Optional, Type, Union
 
 import mlx.core as mx
 import numpy as np
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 from outlines.models.transformers import TransformerTokenizer
 from outlines.processors.structured import JSONLogitsProcessor
-
-from ..schema import ResponseFormat
+from pydantic import BaseModel
 
 
 class OutlinesLogitsProcessor:
     processed_token_count: int = 0
 
-    def __init__(self, tokenizer: TokenizerWrapper, response_format: ResponseFormat):
-        # Handle different response format types
-        if hasattr(response_format, "json_schema") and response_format.json_schema:
-            json_schema = response_format.json_schema.schema_def
-        elif hasattr(response_format, "schema") and response_format.schema:
-            json_schema = response_format.schema
-        else:
-            # Fallback for direct schema dict
-            json_schema = response_format
+    def __init__(
+        self,
+        tokenizer: TokenizerWrapper,
+        schema: Union[Dict[str, Any], Type[BaseModel], str],
+    ):
+        """Initialize the OutlinesLogitsProcessor.
 
+        Args:
+            tokenizer: MLX tokenizer wrapper
+            schema: JSON schema dictionary, Pydantic BaseModel class, or JSON schema string
+            whitespace_pattern: Pattern to use for JSON syntactic whitespace
+        """
         self.logits_processor = JSONLogitsProcessor(
-            json_schema,
+            schema,
             TransformerTokenizer(tokenizer._tokenizer),
             tensor_library_name="mlx",
         )
