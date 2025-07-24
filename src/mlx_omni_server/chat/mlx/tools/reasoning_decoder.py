@@ -1,36 +1,13 @@
 import re
-from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
 
-class TokensDecoder(ABC):
-    """Base class for tokens decoders."""
-
-    @abstractmethod
-    def decode(self, text: str) -> Optional[Dict[str, Any]]:
-        """Parse tool calls from model output."""
-        pass
-
-    def stream_decode(self, text: str) -> Optional[Dict[str, Any]]:
-        """Parse tool calls from model output."""
-        return self.decode(text)
-
-
-class ReasoningDecoder(TokensDecoder):
+class ReasoningDecoder:
     """Base class for reasoning decoders."""
 
-    thinking_tag: str = "think"
-    add_thinking_prefix: bool = False
-    accumulated_text: str = ""
-
-    def __init__(self):
-        self.accumulated_text = ""
-
-    def set_thinking_prefix(self, add_thinking_prefix: bool) -> None:
-        self.add_thinking_prefix = add_thinking_prefix
-        self.accumulated_text = ""
-        if add_thinking_prefix:
-            self.accumulated_text = f"<{self.thinking_tag}>"
+    def __init__(self, thinking_tag: str = "think", init_buffer: str = ""):
+        self.thinking_tag = thinking_tag
+        self.accumulated_text = init_buffer
 
     def _parse_stream_response(self, text: str) -> Optional[Dict[str, Any]]:
         # Check if in thinking mode
@@ -81,7 +58,7 @@ class ReasoningDecoder(TokensDecoder):
     def _parse_response(self, response: str):
         tag = self.thinking_tag
         # First check for complete thinking tag pattern
-        reasoning_regex = f"<{tag}>([\s\S]*?)</{tag}>"
+        reasoning_regex = rf"<{tag}>([\s\S]*?)</{tag}>"
         reasoning_match = re.search(reasoning_regex, response)
 
         if reasoning_match:
