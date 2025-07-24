@@ -29,7 +29,7 @@ dependencies = [
     "uvicorn>=0.34.0,<0.35",
     "rich>=13.9.4",
     # chat
-    "mlx-lm>=0.24,<0.25",
+    "mlx-lm>=0.26",
     "python-multipart>=0.0.20,<0.0.21",
     "sse-starlette>=2.1.3,<3",
     "outlines>=1.0.3",
