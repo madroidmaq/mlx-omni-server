@@ -53,6 +53,7 @@ class MLXGenerateWrapper:
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         template_kwargs: Optional[Dict[str, Any]] = None,
+        json_schema: Optional[Any] = None,
     ) -> str:
         """Prepare prompt using chat tokenizer.
 
@@ -60,16 +61,20 @@ class MLXGenerateWrapper:
             messages: Chat messages in standard format (dictionaries)
             tools: Optional tools for function calling
             template_kwargs: Template parameters for chat tokenizer
+            json_schema: JSON schema for structured output (used to detect thinking+schema combination)
 
         Returns:
             Encoded prompt string
         """
-        if tools:
-            logger.debug(f"Prepared {len(tools)} tools for encoding")
-
         # Use template_kwargs directly, default to empty dict
         if template_kwargs is None:
             template_kwargs = {}
+
+        # Check if we have thinking + json_schema combination
+        # If so, let OutlinesLogitsProcessor handle the <think> tags completely
+        enable_thinking = template_kwargs.get("enable_thinking", False)
+        if enable_thinking and json_schema is not None:
+            template_kwargs["skip_thinking_prefill"] = True
 
         prompt = self.chat_template.apply_chat_template(
             messages=messages,
@@ -86,7 +91,7 @@ class MLXGenerateWrapper:
         top_p: float,
         top_k: int,
         sampler_kwargs: Optional[Dict[str, Any]],
-        max_tokens: int = 2048,
+        max_tokens: int = 4096,
         **kwargs,
     ) -> Dict[str, Any]:
         """Convert parameters to mlx-lm compatible kwargs.
@@ -137,8 +142,12 @@ class MLXGenerateWrapper:
         if json_schema is not None:
             from .outlines_logits_processor import OutlinesLogitsProcessor
 
+            # Check if we need thinking support
+            enable_thinking = self.chat_template.enable_thinking
             logits_processors.append(
-                OutlinesLogitsProcessor(self.tokenizer, json_schema)
+                OutlinesLogitsProcessor(
+                    self.tokenizer, json_schema, enable_thinking=enable_thinking
+                )
             )
 
         # Add existing processors from kwargs if any
@@ -284,8 +293,11 @@ class MLXGenerateWrapper:
         """
         try:
 
+            # Extract json_schema from kwargs for coordination with chat_template
+            json_schema = kwargs.get("json_schema")
+
             # Prepare prompt
-            prompt = self._prepare_prompt(messages, tools, template_kwargs)
+            prompt = self._prepare_prompt(messages, tools, template_kwargs, json_schema)
 
             # Tokenize prompt
             tokenized_prompt = self.tokenizer.encode(prompt)

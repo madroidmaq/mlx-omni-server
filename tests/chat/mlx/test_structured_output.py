@@ -1,5 +1,6 @@
 import json
 import logging
+from textwrap import dedent
 
 from pydantic import BaseModel
 
@@ -26,49 +27,96 @@ class UserProfile(BaseModel):
     email: str
 
 
+class MathReasoning(BaseModel):
+    class Step(BaseModel):
+        explanation: str
+        output: str
+
+    steps: list[Step]
+    final_answer: str
+
+
+math_tutor_json_schema = {
+    "type": "object",
+    "properties": {
+        "steps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "explanation": {"type": "string"},
+                    "output": {"type": "string"},
+                },
+                "required": ["explanation", "output"],
+                "additionalProperties": False,
+            },
+        },
+        "final_answer": {"type": "string"},
+    },
+    "required": ["steps", "final_answer"],
+    "additionalProperties": False,
+}
+
+
 class TestStructuredOutput:
 
-    def test_structured_output_with_json_schema(self):
+    def test_json_schema(self):
+        """Test structured generation with a JSON schema."""
+        # Try to load reasoning model
+        model_name = "mlx-community/gemma-3-1b-it-4bit-DWQ"
+        model = MlxModelCache(model_id=ModelId(name=model_name))
+        wrapper = MLXGenerateWrapper(model)
+
+        math_tutor_prompt = """
+                    You are a helpful math tutor. You will be provided with a math problem,
+                    and your goal will be to output a step by step solution, along with a final answer.
+                    For each step, just provide the output as an equation use the explanation field to detail the reasoning.
+                """
+        result = wrapper.generate(
+            messages=[
+                {"role": "system", "content": dedent(math_tutor_prompt)},
+                {"role": "user", "content": "how can I solve 8x + 7 = -23"},
+            ],
+            json_schema=math_tutor_json_schema,
+        )
+        print(result)
+
+        assert result.text is not None, ""
+        assert result.reasoning is None, ""
+
+        result_data = json.loads(result.text)
+
+        assert result_data["steps"] is not None
+        assert result_data["final_answer"] is not None
+
+    def test_json_schema_with_thinking(self):
         """Test structured generation with a JSON schema."""
         # Try to load reasoning model
         model = MlxModelCache(model_id=ModelId(name="mlx-community/Qwen3-0.6B-4bit"))
         wrapper = MLXGenerateWrapper(model)
 
-        messages = [
-            {
-                "role": "user",
-                "content": "List three colors and their hex codes. Return only valid JSON.",
-            }
-        ]
-        template_kwargs = {"enable_thinking": True}
-
-        # Use a simpler JSON schema approach
-        json_schema = {
-            "type": "object",
-            "properties": {
-                "colors": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "hex": {"type": "string"},
-                        },
-                        "required": ["name", "hex"],
-                    },
-                }
-            },
-            "required": ["colors"],
-        }
-
+        math_tutor_prompt = """
+                    You are a helpful math tutor. You will be provided with a math problem,
+                    and your goal will be to output a step by step solution, along with a final answer.
+                    For each step, just provide the output as an equation use the explanation field to detail the reasoning.
+                """
         result = wrapper.generate(
-            messages=messages, template_kwargs=template_kwargs, json_schema=json_schema
+            messages=[
+                {"role": "system", "content": dedent(math_tutor_prompt)},
+                {"role": "user", "content": "how can I solve 8x + 7 = -23"},
+            ],
+            template_kwargs={"enable_thinking": True},
+            json_schema=math_tutor_json_schema,
         )
         print(result)
 
-        assert result.text is not None, ""
-        colors_data = json.loads(result.text)
-        assert colors_data["colors"] is not None
+        assert result.text is not None, "text is None"
+        assert result.reasoning is not None, "reasoning is None"
+
+        result_data = json.loads(result.text)
+
+        assert result_data["steps"] is not None, "reasoning steps is None"
+        assert result_data["final_answer"] is not None, "reasoning final_answer is None"
 
     def test_structured_output_with_pydantic_model(self):
         """Test structured generation with a Pydantic BaseModel class."""
@@ -145,3 +193,76 @@ class TestStructuredOutput:
         assert isinstance(user_profile.name, str)
         assert isinstance(user_profile.age, int)
         assert isinstance(user_profile.email, str)
+
+    def test_structured_output_with_json_schema2(self):
+        """
+        Test structured generation with a JSON schema.
+        https://cookbook.openai.com/examples/structured_outputs_intro
+        """
+        math_tutor_prompt = """
+            You are a helpful math tutor. You will be provided with a math problem,
+            and your goal will be to output a step by step solution, along with a final answer.
+            For each step, just provide the output as an equation use the explanation field to detail the reasoning.
+        """
+        model_name = "mlx-community/Qwen3-0.6B-4bit"
+        model = MlxModelCache(model_id=ModelId(name=model_name))
+        wrapper = MLXGenerateWrapper(model)
+
+        result = wrapper.generate(
+            messages=[
+                {"role": "system", "content": dedent(math_tutor_prompt)},
+                {"role": "user", "content": "how can I solve 8x + 7 = -23"},
+            ],
+            template_kwargs={"enable_thinking": True},
+            json_schema=math_tutor_json_schema,
+        )
+
+        print("Generated result:")
+        print(f"Text: {result.text}")
+        print(f"Reasoning: {result.reasoning}")
+
+        assert result.reasoning is not None
+        assert result.text is not None
+
+        result_data = json.loads(result.text)
+
+        assert result_data["steps"] is not None
+        assert result_data["final_answer"] is not None
+        print(
+            "✅ Test passed: Both thinking and structured JSON output working correctly!"
+        )
+
+    def test_thinking_structured_output_no_duplicate_tags(self):
+        """Test that thinking+structured output doesn't create duplicate <think> tags."""
+        # Use a reasoning model that supports thinking
+        model_name = "mlx-community/Qwen3-0.6B-4bit"
+        model = MlxModelCache(model_id=ModelId(name=model_name))
+        wrapper = MLXGenerateWrapper(model)
+
+        math_tutor_prompt = """
+                    You are a helpful math tutor. You will be provided with a math problem,
+                    and your goal will be to output a step by step solution, along with a final answer.
+                    For each step, just provide the output as an equation use the explanation field to detail the reasoning.
+                """
+        messages = [{"role": "user", "content": math_tutor_prompt}]
+
+        result = wrapper.generate(
+            messages=messages,
+            template_kwargs={"enable_thinking": True},
+            json_schema=math_tutor_json_schema,
+            max_tokens=8192,
+        )
+
+        print(f"Generated text: {result.text}")
+        print(f"Generated reasoning: {result.reasoning}")
+
+        # Basic functionality checks
+        assert result.text is not None, "Should have text output"
+        assert result.reasoning is not None, "Should have reasoning content"
+
+        # Verify JSON is valid
+        math_data = json.loads(result.text)
+        assert math_data["steps"] is not None
+        assert math_data["final_answer"] is not None
+
+        print("✅ Test passed: Both thinking and structured JSON output working!")

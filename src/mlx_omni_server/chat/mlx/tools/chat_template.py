@@ -72,6 +72,9 @@ class ChatTemplate(ABC):
 
         if kwargs:
             self.enable_thinking = kwargs.pop("enable_thinking", None)
+            skip_thinking_prefill = kwargs.pop("skip_thinking_prefill", False)
+        else:
+            skip_thinking_prefill = False
 
         if should_prefill:
             prompt = self.tokenizer.apply_chat_template(
@@ -92,21 +95,7 @@ class ChatTemplate(ABC):
                 **kwargs,
             )
 
-        if self.enable_thinking is True:
-            self.reason_decoder = ReasoningDecoder(init_buffer="<think>")
-
-            # Enable thinking: ensure prompt ends with <think> to trigger reasoning.
-            if not prompt.rstrip().endswith("<think>"):
-                prompt = prompt + "<think>"
-        elif self.enable_thinking is False:
-            # Disable thinking: immediately add a closed <think></think> block.
-            if not prompt.rstrip().endswith("</think>"):
-                prompt = prompt + "<think>\n\n</think>\n\n"
-        else:
-            # Initialize decoder if not yet done and prompt ends with <think>
-            if prompt.rstrip().endswith("<think>"):
-                self.enable_thinking = True
-                self.reason_decoder = ReasoningDecoder(init_buffer="<think>")
+        prompt = self._process_thinking_prompt(prompt, skip_thinking_prefill)
 
         if tools:
             self.has_tools = True
@@ -126,6 +115,46 @@ class ChatTemplate(ABC):
 
             if should_add_tool_calls:
                 prompt += self.start_tool_calls
+
+        return prompt
+
+    def _process_thinking_prompt(self, prompt: str, skip_thinking_prefill=False) -> str:
+        """Process thinking-related prompt modifications.
+
+        Logic overview:
+        - enable_thinking=True: Add <think> prefill (case3) or remove it if skip_thinking_prefill (json_schema case)
+        - enable_thinking=False: Add complete <think></think> block (case1)
+        - enable_thinking=None: Auto-detect or no modification (case2/case4)
+        """
+        enable_thinking = self.enable_thinking
+
+        # Case4: Auto-detect thinking if not explicitly set
+        if enable_thinking is None:
+            if prompt.rstrip().endswith("<think>"):
+                self.enable_thinking = True
+                enable_thinking = True
+            # If no <think> detected, remain None (case2 - no modification)
+
+        if enable_thinking is True:  # Case3: Explicitly enable thinking
+            if skip_thinking_prefill:
+                # With json_schema: ensure prompt doesn't end with <think>
+                if prompt.rstrip().endswith("<think>"):
+                    prompt = prompt.rstrip()[:-7]
+                # Let OutlinesLogitsProcessor handle thinking pattern
+                self.reason_decoder = ReasoningDecoder(init_buffer="<think>")
+            else:
+                # Without json_schema: ensure prompt ends with <think>
+                if not prompt.rstrip().endswith("<think>"):
+                    prompt = prompt + "<think>"
+                self.reason_decoder = ReasoningDecoder(init_buffer="<think>")
+
+        elif enable_thinking is False:  # Case1: Explicitly disable thinking
+            # Add complete thinking block regardless of skip_thinking_prefill
+            if not prompt.rstrip().endswith("</think>"):
+                prompt = prompt + "<think>\n\n</think>\n\n"
+            self.reason_decoder = None  # No decoder needed for disabled thinking
+
+        # enable_thinking is None: Case2 - no modification, no decoder setup
 
         return prompt
 
