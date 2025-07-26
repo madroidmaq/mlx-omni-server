@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+"""MLX Model types and management."""
+
 from typing import Optional
 
 import mlx.nn as nn
@@ -9,80 +10,163 @@ from ...utils.logger import logger
 from .tools.chat_template import ChatTemplate
 
 
-@dataclass(frozen=True)
-class ModelId:
-    """Entity class representing a unique model identifier.
+def load_mlx_model(
+    model_id: str,
+    adapter_path: Optional[str] = None,
+    draft_model_id: Optional[str] = None,
+) -> "MLXModel":
+    """Factory function to load MLX models.
 
-    This class encapsulates all parameters that determine whether a model
-    needs to be reloaded. It replaces the tuple-based approach with a more
-    object-oriented design that's easier to extend and maintain.
+    Args:
+        model_id: Model name/path (HuggingFace model ID or local path)
+        adapter_path: Optional path to LoRA adapter
+        draft_model_id: Optional draft model name/path for speculative decoding
+
+    Returns:
+        MLXModel instance with loaded models
+
+    Raises:
+        ValueError: If model_id is invalid
+        RuntimeError: If model loading fails
     """
+    if not model_id or not model_id.strip():
+        raise ValueError("model_id cannot be empty")
 
-    name: str
-    adapter_path: Optional[str] = None
-    draft_model: Optional[str] = None
+    model_id = model_id.strip()
 
-    def __str__(self) -> str:
-        """Return a string representation of the model ID for debugging."""
-        parts = [f"model_name={self.name}"]
-        if self.adapter_path:
-            parts.append(f"adapter_path={self.adapter_path}")
-        if self.draft_model:
-            parts.append(f"draft_model={self.draft_model}")
-        return f"ModelId({', '.join(parts)})"
-
-
-class MlxModelCache:
-    """Model cache class to avoid reloading the same models.
-
-    This class manages the cache of main models and draft models based on ModelId objects.
-    """
-
-    def __init__(self, model_id: ModelId):
-        """Initialize the cache object.
-
-        Args:
-            model_id: Optional ModelId object for initialization
-        """
-        self.model_id: ModelId = model_id
-        self.model: Optional[nn.Module] = None
-        self.tokenizer: Optional[TokenizerWrapper] = None
-        self.chat_tokenizer = None
-        self.chat_template: Optional[ChatTemplate] = None
-        self.draft_model: Optional[nn.Module] = None
-        self.draft_tokenizer: Optional[TokenizerWrapper] = None
-
-        # If a model ID is provided, load the models directly
-        if model_id:
-            self._load_models()
-
-    def _load_models(self):
-        """Load the main model and draft model (if needed)."""
+    try:
         # Load the main model
-        self.model, self.tokenizer = load(
-            self.model_id.name,
+        model, tokenizer = load(
+            model_id,
             tokenizer_config={"trust_remote_code": True},
-            adapter_path=self.model_id.adapter_path,
+            adapter_path=adapter_path,
         )
-        logger.info(f"Loaded new model: {self.model_id.name}")
+        logger.info(f"Loaded model: {model_id}")
 
-        # Load configuration and create chat tokenizer
-        model_path = get_model_path(self.model_id.name)
+        # Load configuration and create chat template
+        model_path = get_model_path(model_id)
         config = load_config(model_path)
-        # self.chat_tokenizer = load_tools_parser(config["model_type"], )
-        self.chat_template = ChatTemplate(config["model_type"], self.tokenizer)
+        chat_template = ChatTemplate(config["model_type"], tokenizer)
 
-        # If needed, load the draft model
-        if self.model_id.draft_model:
-            self.draft_model, self.draft_tokenizer = load(
-                self.model_id.draft_model,
-                tokenizer_config={"trust_remote_code": True},
-            )
-
-            # Check if vocabulary sizes match
-            if self.draft_tokenizer.vocab_size != self.tokenizer.vocab_size:
-                logger.warn(
-                    f"Draft model({self.model_id.draft_model}) tokenizer does not match model tokenizer."
+        # Load draft model if specified
+        draft_model = None
+        draft_tokenizer = None
+        if draft_model_id:
+            try:
+                draft_model, draft_tokenizer = load(
+                    draft_model_id,
+                    tokenizer_config={"trust_remote_code": True},
                 )
 
-            logger.info(f"Loaded new draft model: {self.model_id.draft_model}")
+                # Check if vocabulary sizes match
+                if draft_tokenizer.vocab_size != tokenizer.vocab_size:
+                    logger.warn(
+                        f"Draft model({draft_model_id}) tokenizer does not match model tokenizer."
+                    )
+
+                logger.info(f"Loaded draft model: {draft_model_id}")
+            except Exception as e:
+                logger.error(f"Failed to load draft model {draft_model_id}: {e}")
+                # Continue without draft model
+                draft_model = None
+                draft_tokenizer = None
+
+        return MLXModel(
+            model_id=model_id,
+            adapter_path=adapter_path,
+            draft_model_id=draft_model_id,
+            model=model,
+            tokenizer=tokenizer,
+            chat_template=chat_template,
+            draft_model=draft_model,
+            draft_tokenizer=draft_tokenizer,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to load model {model_id}: {e}")
+        raise RuntimeError(f"Model loading failed for {model_id}: {e}") from e
+
+
+class MLXModel:
+    """Simplified MLX model container.
+
+    This class is a simple data container for loaded MLX models.
+    For model management operations, create new instances rather than modifying existing ones.
+    """
+
+    def __init__(
+        self,
+        model_id: str,
+        adapter_path: Optional[str],
+        draft_model_id: Optional[str],
+        model: nn.Module,
+        tokenizer: TokenizerWrapper,
+        chat_template: ChatTemplate,
+        draft_model: Optional[nn.Module] = None,
+        draft_tokenizer: Optional[TokenizerWrapper] = None,
+    ):
+        """Initialize MLX model container.
+
+        This constructor is typically called by load_mlx_model() factory function.
+
+        Args:
+            model_id: Model name/path
+            adapter_path: Path to LoRA adapter (if any)
+            draft_model_id: Draft model name/path (if any)
+            model: Loaded main model
+            tokenizer: Loaded tokenizer
+            chat_template: Chat template instance
+            draft_model: Loaded draft model (optional)
+            draft_tokenizer: Draft model tokenizer (optional)
+        """
+        # Model identification
+        self.model_id = model_id
+        self.adapter_path = adapter_path
+        self.draft_model_id = draft_model_id
+
+        # Loaded model components
+        self.model = model
+        self.tokenizer = tokenizer
+        self.chat_template = chat_template
+        self.draft_model = draft_model
+        self.draft_tokenizer = draft_tokenizer
+
+    @classmethod
+    def load(
+        cls,
+        model_id: str,
+        adapter_path: Optional[str] = None,
+        draft_model_id: Optional[str] = None,
+    ) -> "MLXModel":
+        return load_mlx_model(model_id, adapter_path, draft_model_id)
+
+    def __str__(self) -> str:
+        """Return a string representation of the model for debugging."""
+        parts = [f"model_id={self.model_id}"]
+        if self.adapter_path:
+            parts.append(f"adapter_path={self.adapter_path}")
+        if self.draft_model_id:
+            parts.append(f"draft_model_id={self.draft_model_id}")
+        return f"MLXModel({', '.join(parts)})"
+
+    def __eq__(self, other) -> bool:
+        """Check equality based on model configuration."""
+        if not isinstance(other, MLXModel):
+            return False
+        return (
+            self.model_id == other.model_id
+            and self.adapter_path == other.adapter_path
+            and self.draft_model_id == other.draft_model_id
+        )
+
+    def __hash__(self) -> int:
+        """Hash based on model configuration for use as dict keys."""
+        return hash((self.model_id, self.adapter_path, self.draft_model_id))
+
+    def has_adapter(self) -> bool:
+        """Check if this model has an adapter configured."""
+        return self.adapter_path is not None
+
+    def has_draft_model(self) -> bool:
+        """Check if draft model is available."""
+        return self.draft_model is not None and self.draft_tokenizer is not None

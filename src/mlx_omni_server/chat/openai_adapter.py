@@ -3,7 +3,7 @@ import uuid
 from typing import Generator
 
 from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
-from mlx_omni_server.chat.mlx.model_types import MlxModelCache
+from mlx_omni_server.chat.mlx.model_types import MLXModel
 from mlx_omni_server.chat.schema import (
     ChatCompletionChoice,
     ChatCompletionChunk,
@@ -22,15 +22,15 @@ class OpenAIAdapter:
 
     def __init__(
         self,
-        model_cache: MlxModelCache,
+        model: MLXModel,
     ):
-        """Initialize MLXModel with model cache object.
+        """Initialize MLXModel with model object.
 
         Args:
-            model_cache: MlxModelCache object containing models and tokenizers
+            model: MLXModel object containing models and tokenizers
         """
         self._default_max_tokens = 2048
-        self._generate_wrapper = MLXGenerateWrapper(model_cache)
+        self._generate_wrapper = MLXGenerateWrapper(model)
 
     def _prepare_generation_params(self, request: ChatCompletionRequest) -> dict:
         """Prepare common parameters for both generate and stream_generate."""

@@ -5,7 +5,6 @@ from textwrap import dedent
 from pydantic import BaseModel
 
 from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
-from mlx_omni_server.chat.mlx.model_types import MlxModelCache, ModelId
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -64,8 +63,7 @@ class TestStructuredOutput:
         """Test structured generation with a JSON schema."""
         # Try to load reasoning model
         model_name = "mlx-community/gemma-3-1b-it-4bit-DWQ"
-        model = MlxModelCache(model_id=ModelId(name=model_name))
-        wrapper = MLXGenerateWrapper(model)
+        wrapper = MLXGenerateWrapper.create(model_name)
 
         math_tutor_prompt = """
                     You are a helpful math tutor. You will be provided with a math problem,
@@ -92,8 +90,7 @@ class TestStructuredOutput:
     def test_json_schema_with_thinking(self):
         """Test structured generation with a JSON schema."""
         # Try to load reasoning model
-        model = MlxModelCache(model_id=ModelId(name="mlx-community/Qwen3-0.6B-4bit"))
-        wrapper = MLXGenerateWrapper(model)
+        wrapper = MLXGenerateWrapper.create("mlx-community/Qwen3-0.6B-4bit")
 
         math_tutor_prompt = """
                     You are a helpful math tutor. You will be provided with a math problem,
@@ -122,8 +119,7 @@ class TestStructuredOutput:
         """Test structured generation with a Pydantic BaseModel class."""
         # Try to load reasoning model
         model_name = "mlx-community/gemma-3-1b-it-4bit-DWQ"
-        model = MlxModelCache(model_id=ModelId(name=model_name))
-        wrapper = MLXGenerateWrapper(model)
+        wrapper = MLXGenerateWrapper.create(model_name)
 
         messages = [
             {
@@ -155,8 +151,7 @@ class TestStructuredOutput:
         """Test structured generation with a JSON schema string."""
         # Try to load reasoning model
         model_name = "mlx-community/gemma-3-1b-it-4bit-DWQ"
-        model = MlxModelCache(model_id=ModelId(name=model_name))
-        wrapper = MLXGenerateWrapper(model)
+        wrapper = MLXGenerateWrapper.create(model_name)
 
         messages = [
             {
@@ -205,8 +200,7 @@ class TestStructuredOutput:
             For each step, just provide the output as an equation use the explanation field to detail the reasoning.
         """
         model_name = "mlx-community/Qwen3-0.6B-4bit"
-        model = MlxModelCache(model_id=ModelId(name=model_name))
-        wrapper = MLXGenerateWrapper(model)
+        wrapper = MLXGenerateWrapper.create(model_name)
 
         result = wrapper.generate(
             messages=[
@@ -236,8 +230,7 @@ class TestStructuredOutput:
         """Test that thinking+structured output doesn't create duplicate <think> tags."""
         # Use a reasoning model that supports thinking
         model_name = "mlx-community/Qwen3-0.6B-4bit"
-        model = MlxModelCache(model_id=ModelId(name=model_name))
-        wrapper = MLXGenerateWrapper(model)
+        wrapper = MLXGenerateWrapper.create(model_name)
 
         math_tutor_prompt = """
                     You are a helpful math tutor. You will be provided with a math problem,

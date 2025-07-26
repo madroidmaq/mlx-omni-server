@@ -5,7 +5,7 @@ from typing import Generator, Optional
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .mlx.models import ModelId, load_openai_adapter
+from .mlx.models import MLXModel, load_openai_adapter
 from .openai_adapter import OpenAIAdapter
 from .schema import ChatCompletionRequest, ChatCompletionResponse
 
@@ -50,11 +50,13 @@ def _create_text_model(
 ) -> OpenAIAdapter:
     """Create a text model based on the model parameters.
 
-    Creates a ModelId object and passes it to load_model function.
+    Creates a MLXModel object and passes it to load_model function.
     The caching is handled inside the load_model function.
     """
-    current_key = ModelId(
-        name=model_id, adapter_path=adapter_path, draft_model=draft_model
+    current_key = MLXModel.load(
+        model_id=model_id,
+        adapter_path=adapter_path,
+        draft_model_id=draft_model,
     )
 
     return load_openai_adapter(current_key)

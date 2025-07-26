@@ -9,7 +9,7 @@ from mlx_lm.sample_utils import make_sampler
 from ...utils.logger import logger
 from .core_types import GenerationResult, GenerationStats
 from .logprobs_processor import LogprobsProcessor
-from .model_types import MlxModelCache
+from .model_types import MLXModel
 
 
 class MLXGenerateWrapper:
@@ -20,17 +20,61 @@ class MLXGenerateWrapper:
     the interface as close to mlx-lm as possible.
     """
 
-    def __init__(self, model_cache: MlxModelCache):
-        """Initialize with model cache.
+    def __init__(self, model: MLXModel):
+        """Initialize with MLX model.
 
         Args:
-            model_cache: MLX model cache containing models and tokenizers
+            model: MLX model instance containing models and tokenizers
         """
-        self.model_cache = model_cache
-        self.tokenizer = model_cache.tokenizer
-        self.chat_template = model_cache.chat_template
+        self.model = model
+        self.tokenizer = model.tokenizer
+        self.chat_template = model.chat_template
         self._prompt_cache = None
         self._logprobs_processor = None
+
+    @classmethod
+    def create(
+        cls,
+        model_id: str,
+        adapter_path: Optional[str] = None,
+        draft_model_id: Optional[str] = None,
+    ) -> "MLXGenerateWrapper":
+        """Factory method to create MLXGenerateWrapper with simplified interface.
+
+        Args:
+            model_id: Model name/path (HuggingFace model ID or local path)
+            adapter_path: Optional path to LoRA adapter
+            draft_model_id: Optional draft model name/path for speculative decoding
+
+        Returns:
+            MLXGenerateWrapper instance ready for use
+
+        Examples:
+            # Simple model loading
+            wrapper = MLXGenerateWrapper.create("mlx-community/Qwen3-0.6B-4bit")
+
+            # With adapter
+            wrapper = MLXGenerateWrapper.create(
+                model_id="mlx-community/Llama-3.1-8B-Instruct-4bit",
+                adapter_path="/path/to/adapter"
+            )
+
+            # With draft model for speculative decoding
+            wrapper = MLXGenerateWrapper.create(
+                model_id="mlx-community/Llama-3.1-8B-Instruct-4bit",
+                draft_model_id="mlx-community/Qwen3-0.6B-4bit"
+            )
+        """
+        try:
+            model = MLXModel.load(
+                model_id=model_id,
+                adapter_path=adapter_path,
+                draft_model_id=draft_model_id,
+            )
+            return cls(model)
+        except Exception as e:
+            logger.error(f"Failed to create MLXGenerateWrapper: {e}")
+            raise
 
     @property
     def prompt_cache(self):
@@ -47,6 +91,15 @@ class MLXGenerateWrapper:
         if self._logprobs_processor is None:
             self._logprobs_processor = LogprobsProcessor(self.tokenizer)
         return self._logprobs_processor
+
+    @property
+    def model_info(self) -> dict:
+        """Get information about the loaded model."""
+        return self.model.get_model_info()
+
+    def has_draft_model(self) -> bool:
+        """Check if this wrapper has a draft model for speculative decoding."""
+        return self.model.has_draft_model()
 
     def _prepare_prompt(
         self,
@@ -308,7 +361,7 @@ class MLXGenerateWrapper:
 
             if enable_prompt_cache:
                 processed_prompt, cached_tokens = self.prompt_cache.get_prompt_cache(
-                    self.model_cache, tokenized_prompt
+                    self.model, tokenized_prompt
                 )
 
             # Create MLX kwargs
@@ -329,10 +382,10 @@ class MLXGenerateWrapper:
             generated_tokens = []
 
             for response in stream_generate(
-                model=self.model_cache.model,
+                model=self.model.model,
                 tokenizer=self.tokenizer,
                 prompt=processed_prompt,
-                draft_model=self.model_cache.draft_model,
+                draft_model=self.model.draft_model,
                 **mlx_kwargs,
             ):
                 if response.finish_reason is not None:

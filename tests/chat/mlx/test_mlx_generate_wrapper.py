@@ -4,21 +4,14 @@ import pytest
 
 from mlx_omni_server.chat.mlx.core_types import GenerationResult, ToolCall
 from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
-from mlx_omni_server.chat.mlx.model_types import MlxModelCache, ModelId
 from mlx_omni_server.utils.logger import logger
 
 
 @pytest.fixture
-def model_cache():
-    """Create a model cache with gemma-3-1b for testing."""
-    model_name = "mlx-community/gemma-3-1b-it-4bit-DWQ"
-    return MlxModelCache(model_id=ModelId(name=model_name))
-
-
-@pytest.fixture
-def mlx_wrapper(model_cache):
+def mlx_wrapper():
     """Create MLXGenerateWrapper instance for testing."""
-    return MLXGenerateWrapper(model_cache)
+    model_name = "mlx-community/gemma-3-1b-it-4bit-DWQ"
+    return MLXGenerateWrapper.create(model_name)
 
 
 class TestMLXGenerateWrapper:
@@ -26,7 +19,6 @@ class TestMLXGenerateWrapper:
 
     def test_initialization(self, mlx_wrapper):
         """Test basic initialization."""
-        assert mlx_wrapper.model_cache is not None
         assert mlx_wrapper.tokenizer is not None
         assert mlx_wrapper.chat_template is not None
         assert mlx_wrapper._prompt_cache is None
@@ -218,10 +210,7 @@ class TestMLXGenerateWrapper:
 
     def test_streaming_reasoning_mode(self):
         """Test streaming with reasoning/thinking enabled."""
-        reasoning_model = MlxModelCache(
-            model_id=ModelId(name="mlx-community/Qwen3-0.6B-4bit")
-        )
-        reasoning_wrapper = MLXGenerateWrapper(reasoning_model)
+        reasoning_wrapper = MLXGenerateWrapper.create("mlx-community/Qwen3-0.6B-4bit")
 
         messages = [{"role": "user", "content": "Calculate 23 * 17"}]
 
@@ -247,10 +236,9 @@ class TestMLXGenerateWrapper:
         """Test with actual reasoning model (Qwen3-0.6B-4bit) - optional test."""
         try:
             # Try to load reasoning model
-            reasoning_model = MlxModelCache(
-                model_id=ModelId(name="mlx-community/Qwen3-0.6B-4bit")
+            reasoning_wrapper = MLXGenerateWrapper.create(
+                "mlx-community/Qwen3-0.6B-4bit"
             )
-            reasoning_wrapper = MLXGenerateWrapper(reasoning_model)
 
             messages = [
                 {
