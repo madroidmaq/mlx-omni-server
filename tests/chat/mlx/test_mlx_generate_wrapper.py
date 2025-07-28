@@ -2,7 +2,14 @@
 
 import pytest
 
-from mlx_omni_server.chat.mlx.core_types import GenerationResult, ToolCall
+from mlx_omni_server.chat.mlx.core_types import (
+    CompletionContent,
+    CompletionResult,
+    GenerationResult,
+    StreamContent,
+    StreamResult,
+    ToolCall,
+)
 from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
 from mlx_omni_server.utils.logger import logger
 
@@ -30,8 +37,9 @@ class TestMLXGenerateWrapper:
         result = mlx_wrapper.generate(messages=messages, max_tokens=10)
 
         assert isinstance(result, GenerationResult)
-        assert isinstance(result.text, str)
-        assert len(result.text) > 0
+        assert isinstance(result.content, CompletionContent)
+        assert isinstance(result.content.text, str)
+        assert len(result.content.text) > 0
         assert result.stats.prompt_tokens > 0
         assert result.stats.completion_tokens > 0
         # finish_reason might be None if we hit max_tokens or other conditions
@@ -51,9 +59,11 @@ class TestMLXGenerateWrapper:
         )
 
         assert isinstance(result_low, GenerationResult)
+        assert isinstance(result_low.content, CompletionContent)
         assert isinstance(result_high, GenerationResult)
-        assert len(result_low.text) > 0
-        assert len(result_high.text) > 0
+        assert isinstance(result_high.content, CompletionContent)
+        assert len(result_low.content.text) > 0
+        assert len(result_high.content.text) > 0
 
     def test_generate_with_sampler_config(self, mlx_wrapper):
         """Test generation with custom sampler configuration."""
@@ -71,7 +81,8 @@ class TestMLXGenerateWrapper:
         )
 
         assert isinstance(result, GenerationResult)
-        assert len(result.text) > 0
+        assert isinstance(result.content, CompletionContent)
+        assert len(result.content.text) > 0
 
     def test_generate_with_mlx_config(self, mlx_wrapper):
         """Test generation with MLX-specific configuration."""
@@ -85,7 +96,8 @@ class TestMLXGenerateWrapper:
         )
 
         assert isinstance(result, GenerationResult)
-        assert len(result.text) > 0
+        assert isinstance(result.content, CompletionContent)
+        assert len(result.content.text) > 0
         assert result.stats.completion_tokens <= 50
 
     def test_generate_with_logprobs(self, mlx_wrapper):
@@ -111,15 +123,23 @@ class TestMLXGenerateWrapper:
 
         results = []
         for result in mlx_wrapper.stream_generate(messages=messages, max_tokens=30):
-            logger.info(f"Stream response: {result.text}")
             results.append(result)
             assert isinstance(result, GenerationResult)
-            assert isinstance(result.text, str)
+            assert isinstance(result.content, StreamContent)
+            # Stream content should have either text_delta or reasoning_delta
+            assert (
+                result.content.text_delta is not None
+                or result.content.reasoning_delta is not None
+            )
 
         assert len(results) > 0
 
-        # Combine all text chunks
-        full_text = "".join(result.text for result in results)
+        # Combine all text chunks (only text deltas)
+        full_text = "".join(
+            result.content.text_delta
+            for result in results
+            if result.content.text_delta is not None
+        )
         assert len(full_text) > 0
 
     def test_stream_generate_with_configs(self, mlx_wrapper):
@@ -170,7 +190,8 @@ class TestMLXGenerateWrapper:
         )
 
         assert isinstance(result, GenerationResult)
-        assert len(result.text) > 0
+        assert isinstance(result.content, CompletionContent)
+        assert len(result.content.text) > 0
         assert result.stats.cache_hit_tokens == 0
 
     def test_error_handling_empty_messages(self, mlx_wrapper):
@@ -196,7 +217,8 @@ class TestMLXGenerateWrapper:
         result = mlx_wrapper.generate(messages=messages, max_tokens=20)
 
         assert isinstance(result, GenerationResult)
-        assert len(result.text) > 0
+        assert isinstance(result.content, CompletionContent)
+        assert len(result.content.text) > 0
 
     def test_parameter_precedence(self, mlx_wrapper):
         """Test that function parameters take precedence."""
@@ -282,4 +304,5 @@ class TestMLXGenerateWrapper:
         )
 
         assert isinstance(result, GenerationResult)
-        assert len(result.text) > 0
+        assert isinstance(result.content, CompletionContent)
+        assert len(result.content.text) > 0

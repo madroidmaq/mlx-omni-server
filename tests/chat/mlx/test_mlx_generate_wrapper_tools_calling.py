@@ -4,7 +4,13 @@ import logging
 
 import pytest
 
-from mlx_omni_server.chat.mlx.core_types import GenerationResult, ToolCall
+from mlx_omni_server.chat.mlx.core_types import (
+    CompletionContent,
+    CompletionResult,
+    GenerationResult,
+    StreamResult,
+    ToolCall,
+)
 from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
 
 # Configure logging for tests
@@ -58,9 +64,9 @@ class TestMLXGenerateWrapperToolsCalling:
 
         print("\n============================\nResult:", result)
         logger.info(f"Generation result: {result}")
-        logger.info(f"Tool calls: {result.tool_calls}")
-        logger.info(f"Reasoning: {result.reasoning}")
-        logger.info(f"Text: {result.text}")
+        logger.info(f"Tool calls: {result.content.tool_calls}")
+        logger.info(f"Reasoning: {result.content.reasoning}")
+        logger.info(f"Text: {result.content.text}")
         logger.info(f"Stats: {result.stats}")
         logger.info(
             f"Token usage: prompt={result.stats.prompt_tokens}, completion={result.stats.completion_tokens}"
@@ -70,5 +76,6 @@ class TestMLXGenerateWrapperToolsCalling:
         )
 
         assert isinstance(result, GenerationResult)
-        assert result.reasoning is not None
-        assert result.tool_calls is not None
+        assert isinstance(result.content, CompletionContent)
+        assert result.content.reasoning is not None
+        assert result.content.tool_calls is not None

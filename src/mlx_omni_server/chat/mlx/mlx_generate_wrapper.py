@@ -7,7 +7,14 @@ from mlx_lm.generate import stream_generate
 from mlx_lm.sample_utils import make_sampler
 
 from ...utils.logger import logger
-from .core_types import GenerationResult, GenerationStats
+from .core_types import (
+    CompletionContent,
+    CompletionResult,
+    GenerationResult,
+    GenerationStats,
+    StreamContent,
+    StreamResult,
+)
 from .logprobs_processor import LogprobsProcessor
 from .model_types import MLXModel
 
@@ -238,7 +245,7 @@ class MLXGenerateWrapper:
         enable_prompt_cache: bool = False,
         # Additional MLX generation parameters via **kwargs
         **kwargs,
-    ) -> GenerationResult:
+    ) -> CompletionResult:
         """Generate complete response.
 
         Args:
@@ -261,9 +268,11 @@ class MLXGenerateWrapper:
             # Generate complete response by collecting stream.
             # stream_generate handles the preparation of configurations.
             complete_raw_text = ""
-            final_result_from_stream = None
+            final_stream_result = None
+            all_text_tokens = []
+            all_reasoning_tokens = []
 
-            for result in self.stream_generate(
+            for stream_result in self.stream_generate(
                 messages,
                 tools,
                 max_tokens,
@@ -276,31 +285,43 @@ class MLXGenerateWrapper:
                 enable_prompt_cache,
                 **kwargs,
             ):
-                if result.raw_delta:
-                    complete_raw_text += result.raw_delta
-                final_result_from_stream = result
+                # Collect deltas to reconstruct complete content
+                if stream_result.content.text_delta:
+                    complete_raw_text += stream_result.content.text_delta
+                    all_text_tokens.append(stream_result.content.token)
+                elif stream_result.content.reasoning_delta:
+                    # Reasoning tokens are handled separately
+                    all_reasoning_tokens.append(stream_result.content.token)
 
-            if final_result_from_stream is None:
+                final_stream_result = stream_result
+
+            if final_stream_result is None:
                 raise RuntimeError("No tokens generated")
 
             logger.info(f"Model Response:\n{complete_raw_text}")
             chat_result = self.chat_template.parse_chat_response(complete_raw_text)
 
             # Determine appropriate finish_reason
-            finish_reason = final_result_from_stream.finish_reason
+            finish_reason = final_stream_result.finish_reason
             if chat_result.tool_calls:
                 finish_reason = "tools"
 
+            # Create CompletionContent with complete data
+            content = CompletionContent(
+                text=chat_result.content,
+                reasoning=chat_result.thinking,
+                tool_calls=chat_result.tool_calls,
+                text_tokens=all_text_tokens,
+                reasoning_tokens=all_reasoning_tokens if all_reasoning_tokens else None,
+            )
+
             # Return final result with all processing applied
             return GenerationResult(
-                text=chat_result.content,
-                token=final_result_from_stream.token,
+                content=content,
                 finish_reason=finish_reason,
-                stats=final_result_from_stream.stats,
-                tool_calls=chat_result.tool_calls,
-                reasoning=chat_result.thinking,
-                logprobs=final_result_from_stream.logprobs,
-                from_draft=final_result_from_stream.from_draft,
+                stats=final_stream_result.stats,
+                logprobs=final_stream_result.logprobs,
+                from_draft=final_stream_result.from_draft,
             )
 
         except Exception as e:
@@ -325,7 +346,7 @@ class MLXGenerateWrapper:
         enable_prompt_cache: bool = False,
         # Additional MLX generation parameters via **kwargs
         **kwargs,
-    ) -> Generator[GenerationResult, None, None]:
+    ) -> Generator[StreamResult, None, None]:
         """Generate streaming response.
 
         Args:
@@ -404,6 +425,23 @@ class MLXGenerateWrapper:
                     response.text
                 )
 
+                # Create StreamContent based on parse result
+                chunk_index = len(generated_tokens)
+
+                # Determine which delta field to populate
+                if parse_result.thinking:
+                    content = StreamContent(
+                        reasoning_delta=parse_result.thinking,
+                        token=response.token,
+                        chunk_index=chunk_index,
+                    )
+                else:
+                    content = StreamContent(
+                        text_delta=parse_result.content or response.text,
+                        token=response.token,
+                        chunk_index=chunk_index,
+                    )
+
                 stats = GenerationStats(
                     prompt_tokens=response.prompt_tokens,
                     completion_tokens=response.generation_tokens,
@@ -412,16 +450,13 @@ class MLXGenerateWrapper:
                     peak_memory=response.peak_memory,
                     cache_hit_tokens=cached_tokens,
                 )
+
                 yield GenerationResult(
-                    text=parse_result.content,
-                    token=response.token,
+                    content=content,
                     finish_reason=response.finish_reason,
                     stats=stats,
-                    tool_calls=None,
-                    reasoning=parse_result.thinking,
                     logprobs=logprobs,
                     from_draft=response.from_draft,
-                    raw_delta=response.text,
                 )
 
             # Extend cache with generated tokens if caching is enabled
