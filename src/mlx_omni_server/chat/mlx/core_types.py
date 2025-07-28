@@ -62,37 +62,6 @@ class GenerationResult(Generic[ContentT]):
     logprobs: Optional[Dict[str, Any]] = None
     from_draft: bool = False
 
-    # Legacy fields for backward compatibility - deprecated, use content instead
-    text: str = field(default="", init=False)
-    token: int = field(default=0, init=False)
-    tool_calls: Optional[List[ToolCall]] = field(default=None, init=False)
-    reasoning: Optional[str] = field(default=None, init=False)
-    raw_delta: Optional[str] = field(default=None, init=False)
-
-    def __post_init__(self):
-        """Set legacy fields for backward compatibility."""
-        if hasattr(self.content, "text"):
-            self.text = self.content.text
-        elif hasattr(self.content, "text_delta") and self.content.text_delta:
-            self.text = self.content.text_delta
-
-        if hasattr(self.content, "token"):
-            self.token = self.content.token
-
-        if hasattr(self.content, "tool_calls"):
-            self.tool_calls = self.content.tool_calls
-
-        if hasattr(self.content, "reasoning"):
-            self.reasoning = self.content.reasoning
-        elif hasattr(self.content, "reasoning_delta") and self.content.reasoning_delta:
-            self.reasoning = self.content.reasoning_delta
-
-        # Set raw_delta for streaming content
-        if hasattr(self.content, "text_delta") and self.content.text_delta:
-            self.raw_delta = self.content.text_delta
-        elif hasattr(self.content, "reasoning_delta") and self.content.reasoning_delta:
-            self.raw_delta = self.content.reasoning_delta
-
 
 @dataclass
 class StreamContent(BaseContent):

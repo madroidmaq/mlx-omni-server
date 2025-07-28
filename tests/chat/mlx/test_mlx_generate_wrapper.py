@@ -178,8 +178,8 @@ class TestMLXGenerateWrapper:
 
         assert isinstance(result1, GenerationResult)
         assert isinstance(result2, GenerationResult)
-        assert len(result1.text) > 0
-        assert len(result2.text) > 0
+        assert len(result1.content.text) > 0
+        assert len(result2.content.text) > 0
 
     def test_disable_prompt_caching(self, mlx_wrapper):
         """Test disabling prompt caching."""
@@ -244,9 +244,11 @@ class TestMLXGenerateWrapper:
             messages=messages, template_kwargs=template_kwargs
         ):
 
-            content = content + result.text
-            if result.reasoning:
-                reasoning = reasoning + result.reasoning
+            # Accumulate content based on the type of delta
+            if result.content.text_delta:
+                content = content + result.content.text_delta
+            if result.content.reasoning_delta:
+                reasoning = reasoning + result.content.reasoning_delta
 
         print(f"Reasoning: {reasoning}")
         print(f"content: {content}")
@@ -275,7 +277,7 @@ class TestMLXGenerateWrapper:
             )
 
             assert isinstance(result, GenerationResult)
-            assert len(result.text) > 0
+            assert len(result.content.text) > 0
         except Exception as e:
             import pytest
 
@@ -288,8 +290,8 @@ class TestMLXGenerateWrapper:
         result = mlx_wrapper.generate(messages=messages, tools=[], max_tokens=10)
 
         assert isinstance(result, GenerationResult)
-        assert result.tool_calls is None
-        assert len(result.text) > 0
+        assert result.content.tool_calls is None
+        assert len(result.content.text) > 0
 
     def test_generate_with_none_values(self, mlx_wrapper):
         """Test generation with None values for optional parameters."""

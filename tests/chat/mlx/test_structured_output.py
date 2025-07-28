@@ -79,10 +79,10 @@ class TestStructuredOutput:
         )
         print(result)
 
-        assert result.text is not None, ""
-        assert result.reasoning is None, ""
+        assert result.content.text is not None, ""
+        assert result.content.reasoning is None, ""
 
-        result_data = json.loads(result.text)
+        result_data = json.loads(result.content.text)
 
         assert result_data["steps"] is not None
         assert result_data["final_answer"] is not None
@@ -107,10 +107,10 @@ class TestStructuredOutput:
         )
         print(result)
 
-        assert result.text is not None, "text is None"
-        assert result.reasoning is not None, "reasoning is None"
+        assert result.content.text is not None, "text is None"
+        assert result.content.reasoning is not None, "reasoning is None"
 
-        result_data = json.loads(result.text)
+        result_data = json.loads(result.content.text)
 
         assert result_data["steps"] is not None, "reasoning steps is None"
         assert result_data["final_answer"] is not None, "reasoning final_answer is None"
@@ -135,8 +135,8 @@ class TestStructuredOutput:
             template_kwargs=template_kwargs,
             json_schema=ColorsResponse,
         )
-        assert result.text is not None, ""
-        colors_data = json.loads(result.text)
+        assert result.content.text is not None, ""
+        colors_data = json.loads(result.content.text)
         assert colors_data["colors"] is not None
 
         # Validate that the response matches the Pydantic model structure
@@ -177,8 +177,8 @@ class TestStructuredOutput:
             template_kwargs=template_kwargs,
             json_schema=json_schema_str,
         )
-        assert result.text is not None, ""
-        user_data = json.loads(result.text)
+        assert result.content.text is not None, ""
+        user_data = json.loads(result.content.text)
         assert user_data["name"] is not None
         assert user_data["age"] is not None
         assert user_data["email"] is not None
@@ -212,13 +212,13 @@ class TestStructuredOutput:
         )
 
         print("Generated result:")
-        print(f"Text: {result.text}")
-        print(f"Reasoning: {result.reasoning}")
+        print(f"Text: {result.content.text}")
+        print(f"Reasoning: {result.content.reasoning}")
 
-        assert result.reasoning is not None
-        assert result.text is not None
+        assert result.content.reasoning is not None
+        assert result.content.text is not None
 
-        result_data = json.loads(result.text)
+        result_data = json.loads(result.content.text)
 
         assert result_data["steps"] is not None
         assert result_data["final_answer"] is not None
@@ -246,15 +246,15 @@ class TestStructuredOutput:
             max_tokens=8192,
         )
 
-        print(f"Generated text: {result.text}")
-        print(f"Generated reasoning: {result.reasoning}")
+        print(f"Generated text: {result.content.text}")
+        print(f"Generated reasoning: {result.content.reasoning}")
 
         # Basic functionality checks
-        assert result.text is not None, "Should have text output"
-        assert result.reasoning is not None, "Should have reasoning content"
+        assert result.content.text is not None, "Should have text output"
+        assert result.content.reasoning is not None, "Should have reasoning content"
 
         # Verify JSON is valid
-        math_data = json.loads(result.text)
+        math_data = json.loads(result.content.text)
         assert math_data["steps"] is not None
         assert math_data["final_answer"] is not None
 

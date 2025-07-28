@@ -171,3 +171,4 @@ cython_debug/
 CLAUDE.md
 CLAUDE.local.md
 GEMINI.md
+.claude

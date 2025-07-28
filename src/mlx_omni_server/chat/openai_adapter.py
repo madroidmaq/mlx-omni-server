@@ -117,18 +117,18 @@ class OpenAIAdapter:
             # Directly use wrapper's generate method for complete response
             result = self._generate_wrapper.generate(**params)
 
-            logger.debug(f"Model Response:\n{result.text}")
+            logger.debug(f"Model Response:\n{result.content.text}")
 
             # Use reasoning from the wrapper's result
-            final_content = result.text
-            reasoning_content = result.reasoning
+            final_content = result.content.text
+            reasoning_content = result.content.reasoning
 
             # Use wrapper's chat tokenizer for tool processing
             if request.tools:
                 message = ChatMessage(
                     role=Role.ASSISTANT,
                     content=final_content,
-                    tool_calls=result.tool_calls,
+                    tool_calls=result.content.tool_calls,
                     reasoning=reasoning_content,
                 )
             else:
@@ -189,11 +189,19 @@ class OpenAIAdapter:
             params = self._prepare_generation_params(request)
 
             result = None
-            for stream_result in self._generate_wrapper.stream_generate(**params):
+            for chunk in self._generate_wrapper.stream_generate(**params):
                 created = int(time.time())
 
                 # TODO: support streaming tools parse
-                message = ChatMessage(role=Role.ASSISTANT, content=stream_result.text)
+                # For streaming, we need to get the appropriate delta content
+                if chunk.content.text_delta:
+                    content = chunk.content.text_delta
+                elif chunk.content.reasoning_delta:
+                    content = chunk.content.reasoning_delta
+                else:
+                    content = ""
+
+                message = ChatMessage(role=Role.ASSISTANT, content=content)
 
                 yield ChatCompletionChunk(
                     id=chat_id,
@@ -203,12 +211,12 @@ class OpenAIAdapter:
                         ChatCompletionChunkChoice(
                             index=0,
                             delta=message,
-                            finish_reason=stream_result.finish_reason or "stop",
-                            logprobs=stream_result.logprobs,
+                            finish_reason=chunk.finish_reason or "stop",
+                            logprobs=chunk.logprobs,
                         )
                     ],
                 )
-                result = stream_result
+                result = chunk
 
             if (
                 request.stream_options
