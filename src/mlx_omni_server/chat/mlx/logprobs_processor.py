@@ -1,6 +1,6 @@
 """Log probabilities processing utilities for MLX responses."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import mlx.core as mx
 

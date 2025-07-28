@@ -23,3 +23,14 @@ repos:
     hooks:
       - id: isort
         args: [ --profile=black ]
+
+  - repo: https://github.com/pycqa/autoflake
+    rev: v2.2.1
+    hooks:
+      - id: autoflake
+        args:
+          - --remove-all-unused-imports
+#          - --remove-unused-variables
+          - --remove-duplicate-keys
+          - --ignore-pass-after-docstring
+          - --in-place

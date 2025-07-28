@@ -4,13 +4,7 @@ import logging
 
 import pytest
 
-from mlx_omni_server.chat.mlx.core_types import (
-    CompletionContent,
-    CompletionResult,
-    GenerationResult,
-    StreamResult,
-    ToolCall,
-)
+from mlx_omni_server.chat.mlx.core_types import CompletionContent, GenerationResult
 from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
 
 # Configure logging for tests

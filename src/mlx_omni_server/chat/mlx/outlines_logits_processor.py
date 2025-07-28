@@ -1,9 +1,6 @@
-import json
-import re
-from typing import Any, Dict, Optional, Type, Union
+from typing import Any, Dict, Type, Union
 
 import mlx.core as mx
-import numpy as np
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 from outlines.models.transformers import TransformerTokenizer
 from outlines.processors.structured import JSONLogitsProcessor, RegexLogitsProcessor

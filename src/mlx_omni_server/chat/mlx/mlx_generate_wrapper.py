@@ -2,7 +2,6 @@
 
 from typing import Any, Dict, Generator, List, Optional
 
-import mlx.core as mx
 from mlx_lm.generate import stream_generate
 from mlx_lm.sample_utils import make_sampler
 
@@ -272,7 +271,7 @@ class MLXGenerateWrapper:
             all_text_tokens = []
             all_reasoning_tokens = []
 
-            for stream_result in self.stream_generate(
+            for stream_result in self.generate_stream(
                 messages,
                 tools,
                 max_tokens,
@@ -328,7 +327,7 @@ class MLXGenerateWrapper:
             logger.error(f"Error during generation: {e}")
             raise RuntimeError(f"Generation failed: {e}")
 
-    def stream_generate(
+    def generate_stream(
         self,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,

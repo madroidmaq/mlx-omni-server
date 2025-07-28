@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Optional
 
 from ..models.models_service import ModelCacheScanner
 from .schema import AnthropicModelInfo, AnthropicModelList

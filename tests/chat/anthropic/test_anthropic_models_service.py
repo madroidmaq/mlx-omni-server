@@ -1,5 +1,3 @@
-import re
-
 import anthropic
 import pytest
 from fastapi.testclient import TestClient

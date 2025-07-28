@@ -1,5 +1,4 @@
 import json
-from dataclasses import dataclass
 from typing import Generator, Optional
 
 from fastapi import APIRouter
@@ -28,7 +27,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
         return JSONResponse(content=completion.model_dump(exclude_none=True))
 
     async def event_generator() -> Generator[str, None, None]:
-        for chunk in text_model.stream_generate(request):
+        for chunk in text_model.generate_stream(request):
             yield f"data: {json.dumps(chunk.model_dump(exclude_none=True))}\n\n"
 
         yield "data: [DONE]\n\n"

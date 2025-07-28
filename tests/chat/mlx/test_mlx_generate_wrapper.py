@@ -4,11 +4,8 @@ import pytest
 
 from mlx_omni_server.chat.mlx.core_types import (
     CompletionContent,
-    CompletionResult,
     GenerationResult,
     StreamContent,
-    StreamResult,
-    ToolCall,
 )
 from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
 from mlx_omni_server.utils.logger import logger
@@ -122,7 +119,7 @@ class TestMLXGenerateWrapper:
         messages = [{"role": "user", "content": "Count from 1 to 5"}]
 
         results = []
-        for result in mlx_wrapper.stream_generate(messages=messages, max_tokens=30):
+        for result in mlx_wrapper.generate_stream(messages=messages, max_tokens=30):
             results.append(result)
             assert isinstance(result, GenerationResult)
             assert isinstance(result.content, StreamContent)
@@ -149,7 +146,7 @@ class TestMLXGenerateWrapper:
         sampler_kwargs = {"min_p": 0.1, "xtc_probability": 0.1}
 
         results = []
-        for result in mlx_wrapper.stream_generate(
+        for result in mlx_wrapper.generate_stream(
             messages=messages,
             max_tokens=40,  # Function parameter takes precedence
             temperature=0.7,
@@ -240,7 +237,7 @@ class TestMLXGenerateWrapper:
 
         content = ""
         reasoning = ""
-        for result in reasoning_wrapper.stream_generate(
+        for result in reasoning_wrapper.generate_stream(
             messages=messages, template_kwargs=template_kwargs
         ):
 

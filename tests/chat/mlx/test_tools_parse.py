@@ -1,6 +1,5 @@
 import unittest
 
-from mlx_omni_server.chat.mlx.core_types import ToolCall
 from mlx_omni_server.chat.mlx.tools.utils import extract_tools
 
 

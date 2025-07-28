@@ -177,7 +177,7 @@ class OpenAIAdapter:
             logger.error(f"Failed to generate completion: {str(e)}", exc_info=True)
             raise RuntimeError(f"Failed to generate completion: {str(e)}")
 
-    def stream_generate(
+    def generate_stream(
         self,
         request: ChatCompletionRequest,
     ) -> Generator[ChatCompletionChunk, None, None]:
@@ -189,7 +189,7 @@ class OpenAIAdapter:
             params = self._prepare_generation_params(request)
 
             result = None
-            for chunk in self._generate_wrapper.stream_generate(**params):
+            for chunk in self._generate_wrapper.generate_stream(**params):
                 created = int(time.time())
 
                 # TODO: support streaming tools parse
