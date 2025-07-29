@@ -289,7 +289,8 @@ class MLXGenerateWrapper:
                     complete_raw_text += stream_result.content.text_delta
                     all_text_tokens.append(stream_result.content.token)
                 elif stream_result.content.reasoning_delta:
-                    # Reasoning tokens are handled separately
+                    # Reasoning tokens should also be included in complete_raw_text
+                    complete_raw_text += stream_result.content.reasoning_delta
                     all_reasoning_tokens.append(stream_result.content.token)
 
                 final_stream_result = stream_result

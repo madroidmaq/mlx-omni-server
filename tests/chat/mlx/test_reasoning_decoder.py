@@ -17,6 +17,18 @@ class TestReasoningDecoder:
         decoder = ReasoningDecoder()
         return decoder
 
+    def test_parse_response_with_empty_thinking(self, decoder):
+        """Test parsing responses with thinking tags"""
+        # Prepare test data
+        test_response = "<think>\n\n</think>\nHere is the final answer."
+
+        # Execute test
+        result = decoder._parse_response(test_response)
+
+        # Verify results
+        assert result["reasoning"] == ""
+        assert result["content"] == "Here is the final answer."
+
     def test_parse_response_with_thinking(self, decoder):
         """Test parsing responses with thinking tags"""
         # Prepare test data
@@ -54,21 +66,6 @@ class TestReasoningDecoder:
         # Verify results
         assert result["reasoning"] == "Reasoning process"
         assert result["content"] == "Final answer"
-
-    def test_set_thinking_prefix(self, decoder):
-        """Test the set_thinking_prefix method"""
-        # Initial state
-        assert decoder.accumulated_text == ""
-
-        # Set to enabled
-        decoder.set_thinking_prefix(True)
-        assert decoder.add_thinking_prefix is True
-        assert decoder.accumulated_text == f"<{decoder.thinking_tag}>"
-
-        # Set to disabled
-        decoder.set_thinking_prefix(False)
-        assert decoder.add_thinking_prefix is False
-        assert decoder.accumulated_text == ""
 
     def test_parse_stream_response_thinking_mode(self, decoder):
         """Test stream response parsing in thinking mode with sequential streaming calls"""

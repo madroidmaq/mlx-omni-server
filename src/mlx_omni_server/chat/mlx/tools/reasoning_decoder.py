@@ -81,6 +81,9 @@ class ReasoningDecoder:
                 if len(parts) == 2:
                     reasoning_content = parts[0].strip()
                     content = parts[1].strip()
+                    # If reasoning_content is empty, treat as no reasoning
+                    if not reasoning_content:
+                        reasoning_content = None
                     return {
                         "content": content,
                         "reasoning": reasoning_content,

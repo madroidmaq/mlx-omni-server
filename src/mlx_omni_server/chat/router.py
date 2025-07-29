@@ -4,7 +4,7 @@ from typing import Generator, Optional
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .mlx.models import MLXModel, load_openai_adapter
+from .mlx.model_types import MLXModel
 from .openai_adapter import OpenAIAdapter
 from .schema import ChatCompletionRequest, ChatCompletionResponse
 
@@ -58,4 +58,33 @@ def _create_text_model(
         draft_model_id=draft_model,
     )
 
-    return load_openai_adapter(current_key)
+    return _load_openai_adapter(current_key)
+
+
+_cached_model: MLXModel = None
+_cached_adapter: OpenAIAdapter = None
+
+
+def _load_openai_adapter(model_key: MLXModel) -> OpenAIAdapter:
+    """Load the model and return an OpenAIAdapter instance.
+
+    Args:
+        model_key: MLXModel object containing model identification parameters
+
+    Returns:
+        Initialized OpenAIAdapter instance
+    """
+    global _cached_model, _cached_adapter
+
+    # Check if a new model needs to be loaded
+    model_needs_reload = _cached_model is None or _cached_model != model_key
+
+    if model_needs_reload:
+        # Cache miss, use the already loaded model
+        _cached_model = model_key
+
+        # Create and cache new OpenAIAdapter instance
+        _cached_adapter = OpenAIAdapter(model=_cached_model)
+
+    # Return cached adapter instance
+    return _cached_adapter

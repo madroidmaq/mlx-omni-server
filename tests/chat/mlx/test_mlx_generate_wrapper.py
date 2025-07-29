@@ -270,11 +270,13 @@ class TestMLXGenerateWrapper:
             template_kwargs = {"enable_thinking": True}
 
             result = reasoning_wrapper.generate(
-                messages=messages, template_kwargs=template_kwargs
+                messages=messages,
+                template_kwargs=template_kwargs,
             )
 
             assert isinstance(result, GenerationResult)
             assert len(result.content.text) > 0
+            assert len(result.content.reasoning) > 0
         except Exception as e:
             import pytest
 
