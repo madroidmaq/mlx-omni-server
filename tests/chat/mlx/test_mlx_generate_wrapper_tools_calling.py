@@ -52,7 +52,6 @@ class TestMLXGenerateWrapperToolsCalling:
         result = mlx_wrapper.generate(
             messages=messages,
             tools=tools,
-            temperature=0,
             template_kwargs={"enable_thinking": True},
         )
 

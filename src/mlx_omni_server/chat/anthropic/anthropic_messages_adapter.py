@@ -179,10 +179,12 @@ class AnthropicMessagesAdapter:
             template_kwargs["enable_thinking"] = True
             # template_kwargs["thinking_budget"] = request.thinking.budget_tokens
 
-        # Sampler parameters
-        sampler_kwargs = {}
-        if request.top_k is not None:
-            sampler_kwargs["top_k"] = request.top_k
+        # Prepare sampler configuration
+        sampler_config = {
+            "temp": request.temperature or 1.0,
+            "top_p": request.top_p or 1.0,
+            "top_k": request.top_k or 0,
+        }
 
         logger.info(f"Anthropic messages: {messages}")
         logger.info(f"Anthropic template_kwargs: {template_kwargs}")
@@ -191,10 +193,7 @@ class AnthropicMessagesAdapter:
             "messages": messages,
             "tools": tools,
             "max_tokens": request.max_tokens,
-            "temperature": request.temperature or 1.0,
-            "top_p": request.top_p or 1.0,
-            "top_k": request.top_k or 0,
-            "sampler_kwargs": sampler_kwargs,
+            "sampler": sampler_config,
             "template_kwargs": template_kwargs,
             "enable_prompt_cache": True,
         }

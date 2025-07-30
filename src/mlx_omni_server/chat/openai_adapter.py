@@ -44,15 +44,22 @@ class OpenAIAdapter:
         extra_params = request.get_extra_params()
         extra_body = extra_params.get("extra_body", {})
 
-        # Prepare sampler parameters
-        sampler_kwargs = {
-            "min_p": extra_body.get("min_p", 0.0),
-            "min_tokens_to_keep": extra_body.get("min_tokens_to_keep", 1),
-            "xtc_probability": extra_body.get("xtc_probability", 0.0),
-            "xtc_threshold": extra_body.get("xtc_threshold", 0.0),
+        # Prepare sampler configuration
+        sampler_config = {
+            "temp": 1.0 if request.temperature is None else request.temperature,
+            "top_p": 1.0 if request.top_p is None else request.top_p,
+            "top_k": extra_body.get("top_k", 0),
         }
-        if extra_body.get("top_k") is not None:
-            sampler_kwargs["top_k"] = extra_body.get("top_k")
+
+        # Add additional sampler parameters from extra_body
+        if extra_body.get("min_p") is not None:
+            sampler_config["min_p"] = extra_body.get("min_p")
+        if extra_body.get("min_tokens_to_keep") is not None:
+            sampler_config["min_tokens_to_keep"] = extra_body.get("min_tokens_to_keep")
+        if extra_body.get("xtc_probability") is not None:
+            sampler_config["xtc_probability"] = extra_body.get("xtc_probability")
+        if extra_body.get("xtc_threshold") is not None:
+            sampler_config["xtc_threshold"] = extra_body.get("xtc_threshold")
 
         # Prepare template parameters - include both extra_body and direct extra params
         template_kwargs = dict(extra_body)
@@ -94,11 +101,8 @@ class OpenAIAdapter:
             "messages": messages,
             "tools": tools,
             "max_tokens": max_tokens,
-            "temperature": 1.0 if request.temperature is None else request.temperature,
-            "top_p": 1.0 if request.top_p is None else request.top_p,
-            "top_k": extra_body.get("top_k", 0),
+            "sampler": sampler_config,
             "top_logprobs": request.top_logprobs if request.logprobs else None,
-            "sampler_kwargs": sampler_kwargs,
             "template_kwargs": template_kwargs,
             "enable_prompt_cache": True,
             "repetition_penalty": request.presence_penalty,

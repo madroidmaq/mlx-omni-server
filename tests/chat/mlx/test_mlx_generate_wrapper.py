@@ -47,12 +47,12 @@ class TestMLXGenerateWrapper:
 
         # Test with low temperature (more deterministic)
         result_low = mlx_wrapper.generate(
-            messages=messages, temperature=0.1, max_tokens=20
+            messages=messages, sampler={"temp": 0.1}, max_tokens=20
         )
 
         # Test with high temperature (more random)
         result_high = mlx_wrapper.generate(
-            messages=messages, temperature=1.5, max_tokens=20
+            messages=messages, sampler={"temp": 1.5}, max_tokens=20
         )
 
         assert isinstance(result_low, GenerationResult)
@@ -66,15 +66,18 @@ class TestMLXGenerateWrapper:
         """Test generation with custom sampler configuration."""
         messages = [{"role": "user", "content": "What is 2+2?"}]
 
-        sampler_kwargs = {"min_p": 0.1, "xtc_probability": 0.1}
+        sampler_config = {
+            "temp": 0.5,
+            "top_p": 0.9,
+            "top_k": 50,
+            "min_p": 0.1,
+            "xtc_probability": 0.1,
+        }
 
         result = mlx_wrapper.generate(
             messages=messages,
             max_tokens=20,
-            temperature=0.5,
-            top_p=0.9,
-            top_k=50,
-            sampler_kwargs=sampler_kwargs,
+            sampler=sampler_config,
         )
 
         assert isinstance(result, GenerationResult)
@@ -143,15 +146,18 @@ class TestMLXGenerateWrapper:
         """Test streaming generation with custom configurations."""
         messages = [{"role": "user", "content": "Tell me about cats"}]
 
-        sampler_kwargs = {"min_p": 0.1, "xtc_probability": 0.1}
+        sampler_config = {
+            "temp": 0.7,
+            "top_p": 0.95,
+            "min_p": 0.1,
+            "xtc_probability": 0.1,
+        }
 
         results = []
         for result in mlx_wrapper.generate_stream(
             messages=messages,
             max_tokens=40,  # Function parameter takes precedence
-            temperature=0.7,
-            top_p=0.95,
-            sampler_kwargs=sampler_kwargs,
+            sampler=sampler_config,
         ):
             results.append(result)
 
@@ -299,7 +305,7 @@ class TestMLXGenerateWrapper:
         result = mlx_wrapper.generate(
             messages=messages,
             tools=None,
-            sampler_kwargs=None,
+            sampler=None,  # Should let mlx-lm use its defaults
             template_kwargs=None,
             max_tokens=10,
         )
