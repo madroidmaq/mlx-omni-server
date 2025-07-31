@@ -28,21 +28,20 @@ from mlx_omni_server.chat.anthropic.anthropic_schema import (
     Usage,
 )
 from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
-from mlx_omni_server.chat.mlx.model_types import MLXModel
 from mlx_omni_server.utils.logger import logger
 
 
 class AnthropicMessagesAdapter:
     """Anthropic Messages API adapter with internal parameter management."""
 
-    def __init__(self, model: MLXModel):
-        """Initialize adapter with model object.
+    def __init__(self, wrapper: MLXGenerateWrapper):
+        """Initialize adapter with wrapper object.
 
         Args:
-            model: MLXModel object containing models and tokenizers
+            wrapper: MLXGenerateWrapper instance (cached and ready to use)
         """
         self._default_max_tokens = 2048
-        self._generate_wrapper = MLXGenerateWrapper(model)
+        self._generate_wrapper = wrapper
 
     def _convert_system_to_messages(
         self, system: Optional[SystemPrompt], messages: List[InputMessage]

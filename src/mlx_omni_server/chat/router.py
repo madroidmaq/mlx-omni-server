@@ -4,7 +4,7 @@ from typing import Generator, Optional
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .mlx.model_types import MLXModel
+from .mlx.wrapper_cache import wrapper_cache
 from .openai_adapter import OpenAIAdapter
 from .schema import ChatCompletionRequest, ChatCompletionResponse
 
@@ -49,42 +49,20 @@ def _create_text_model(
 ) -> OpenAIAdapter:
     """Create a text model based on the model parameters.
 
-    Creates a MLXModel object and passes it to load_model function.
-    The caching is handled inside the load_model function.
+    Uses the shared wrapper cache to get or create MLXGenerateWrapper instance.
+    This avoids expensive model reloading when the same model configuration
+    is used across different requests or API endpoints.
     """
-    current_key = MLXModel.load(
+    # Get cached or create new MLXGenerateWrapper
+    wrapper = wrapper_cache.get_wrapper(
         model_id=model_id,
         adapter_path=adapter_path,
         draft_model_id=draft_model,
     )
 
-    return _load_openai_adapter(current_key)
+    # Create OpenAIAdapter with the cached wrapper directly
+    return OpenAIAdapter(wrapper=wrapper)
 
 
-_cached_model: MLXModel = None
-_cached_adapter: OpenAIAdapter = None
-
-
-def _load_openai_adapter(model_key: MLXModel) -> OpenAIAdapter:
-    """Load the model and return an OpenAIAdapter instance.
-
-    Args:
-        model_key: MLXModel object containing model identification parameters
-
-    Returns:
-        Initialized OpenAIAdapter instance
-    """
-    global _cached_model, _cached_adapter
-
-    # Check if a new model needs to be loaded
-    model_needs_reload = _cached_model is None or _cached_model != model_key
-
-    if model_needs_reload:
-        # Cache miss, use the already loaded model
-        _cached_model = model_key
-
-        # Create and cache new OpenAIAdapter instance
-        _cached_adapter = OpenAIAdapter(model=_cached_model)
-
-    # Return cached adapter instance
-    return _cached_adapter
+# Legacy caching variables removed - now using shared wrapper_cache
+# This eliminates duplicate caching logic and enables sharing between endpoints

@@ -8,7 +8,7 @@ from mlx_omni_server.chat.anthropic.anthropic_messages_adapter import (
     AnthropicMessagesAdapter,
 )
 
-from ..mlx.model_types import MLXModel
+from ..mlx.wrapper_cache import wrapper_cache
 from .anthropic_schema import MessagesRequest, MessagesResponse
 from .models_service import AnthropicModelsService
 from .schema import AnthropicModelList
@@ -16,9 +16,8 @@ from .schema import AnthropicModelList
 router = APIRouter(tags=["anthropic"])
 models_service = AnthropicModelsService()
 
-# Initialize global cache objects
-_cached_model: MLXModel = None
-_cached_anthropic_adapter: AnthropicMessagesAdapter = None
+# Legacy caching variables removed - now using shared wrapper_cache
+# This eliminates duplicate caching logic and enables sharing between endpoints
 
 
 @router.get("/models", response_model=AnthropicModelList)
@@ -86,41 +85,16 @@ def _create_anthropic_model(
 ) -> AnthropicMessagesAdapter:
     """Create an Anthropic Messages adapter based on the model parameters.
 
-    Creates a MLXModel object and passes it to load_anthropic_adapter function.
-    The caching is handled inside the load_anthropic_adapter function.
+    Uses the shared wrapper cache to get or create MLXGenerateWrapper instance.
+    This avoids expensive model reloading when the same model configuration
+    is used across different requests or API endpoints.
     """
-    current_key = MLXModel.load(
+    # Get cached or create new MLXGenerateWrapper
+    wrapper = wrapper_cache.get_wrapper(
         model_id=model_id,
         adapter_path=adapter_path,
         draft_model_id=draft_model,
     )
 
-    return _load_anthropic_adapter(current_key)
-
-
-def _load_anthropic_adapter(model_key: MLXModel) -> AnthropicMessagesAdapter:
-    """Load the model and return an AnthropicMessagesAdapter instance.
-
-    Args:
-        model_key: MLXModel object containing model identification parameters
-
-    Returns:
-        Initialized AnthropicMessagesAdapter instance
-    """
-    global _cached_model, _cached_anthropic_adapter
-
-    # Check if a new model needs to be loaded
-    model_needs_reload = _cached_model is None or _cached_model != model_key
-
-    if model_needs_reload:
-        # Cache miss, use the already loaded model
-        _cached_model = model_key
-
-        # Create and cache new AnthropicMessagesAdapter instance
-        _cached_anthropic_adapter = AnthropicMessagesAdapter(model=_cached_model)
-    elif _cached_anthropic_adapter is None:
-        # Model is cached but anthropic adapter is not
-        _cached_anthropic_adapter = AnthropicMessagesAdapter(model=_cached_model)
-
-    # Return cached adapter instance
-    return _cached_anthropic_adapter
+    # Create AnthropicMessagesAdapter with the cached wrapper directly
+    return AnthropicMessagesAdapter(wrapper=wrapper)
