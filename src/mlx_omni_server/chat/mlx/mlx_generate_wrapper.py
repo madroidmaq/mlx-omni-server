@@ -133,6 +133,12 @@ class MLXGenerateWrapper:
         if enable_thinking and json_schema is not None:
             template_kwargs["skip_thinking_prefill"] = True
 
+        # Map enable_thinking to enable_thinking_parse for new parameter name
+        if "enable_thinking" in template_kwargs:
+            template_kwargs["enable_thinking_parse"] = template_kwargs.pop(
+                "enable_thinking"
+            )
+
         prompt = self.chat_template.apply_chat_template(
             messages=messages,
             tools=tools,
@@ -198,7 +204,7 @@ class MLXGenerateWrapper:
             from .outlines_logits_processor import OutlinesLogitsProcessor
 
             # Check if we need thinking support
-            enable_thinking = self.chat_template.enable_thinking
+            enable_thinking = self.chat_template.enable_thinking_parse
             logits_processors.append(
                 OutlinesLogitsProcessor(
                     self.tokenizer, json_schema, enable_thinking=enable_thinking

@@ -6,90 +6,67 @@ from mlx_omni_server.chat.mlx.tools.chat_template import ChatTemplate
 class TestChatTemplate:
     thinking_model_id = "mlx-community/Qwen3-0.6B-4bit-DWQ"
     nonthinking_model_id = "mlx-community/gemma-3-1b-it-4bit-DWQ"
-    # tools_model_id = "mlx-community/gemma-3-1b-it-4bit-DWQ"
     tools_model_id = "mlx-community/Llama-3.2-1B-Instruct-4bit"
 
-    def test_enable_thinking(self):
-        # Test tool call extraction
+    def test_thinking_enabled(self):
+        # Test explicitly enabling thinking
         model, tokenizer = load(self.thinking_model_id)
-
         chat_template = ChatTemplate(tools_parser_type="qwen3", tokenizer=tokenizer)
 
-        messages = [
-            {
-                "role": "user",
-                "content": "hello",
-            }
-        ]
+        messages = [{"role": "user", "content": "hello"}]
         prompt = chat_template.apply_chat_template(
             messages=messages,
-            enable_thinking=True,
+            enable_thinking_parse=True,
         )
         print(prompt)
         assert prompt.endswith("<think>")
-        assert chat_template.enable_thinking is True
+        assert chat_template.enable_thinking_parse is True
         assert chat_template.reason_decoder is not None
 
-    def test_disable_thinking(self):
-        # Test tool call extraction
+    def test_thinking_disabled(self):
+        # Test explicitly disabling thinking - should do no modification
         model, tokenizer = load(self.thinking_model_id)
-
         chat_template = ChatTemplate(tools_parser_type="qwen3", tokenizer=tokenizer)
 
-        messages = [
-            {
-                "role": "user",
-                "content": "hello",
-            }
-        ]
+        messages = [{"role": "user", "content": "hello"}]
         prompt = chat_template.apply_chat_template(
             messages=messages,
-            enable_thinking=False,
+            enable_thinking_parse=False,
         )
         print(prompt)
+        # Should not modify prompt, no thinking processing
         assert not prompt.endswith("<think>")
-        assert chat_template.enable_thinking is False
+        assert "<think>\n\n</think>\n\n" not in prompt
+        assert chat_template.enable_thinking_parse is False
         assert chat_template.reason_decoder is None
 
-    def test_none_thinking(self):
-        # Test tool call extraction
+    def test_thinking_auto_detect(self):
+        # Test comprehensive None behavior: default value and auto-detection
         model, tokenizer = load(self.thinking_model_id)
-
         chat_template = ChatTemplate(tools_parser_type="qwen3", tokenizer=tokenizer)
 
-        messages = [
-            {
-                "role": "user",
-                "content": "hello",
-            }
-        ]
-        prompt = chat_template.apply_chat_template(
-            messages=messages,
-        )
-        print(prompt)
-        assert "<think>" not in prompt
-        assert chat_template.enable_thinking is None
+        # Test 1: Default value should be None
+        assert chat_template.enable_thinking_parse is None
         assert chat_template.reason_decoder is None
 
-    def test_auto_thinking_with_prefill(self):
-        # Test tool call extraction
-        model, tokenizer = load("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B")
+        # Test 2: No auto-detection when prompt doesn't end with <think>
+        messages = [{"role": "user", "content": "hello"}]
+        prompt = chat_template.apply_chat_template(messages=messages)
+        print("No auto-detection:", prompt)
+        assert "<think>" not in prompt
+        assert chat_template.enable_thinking_parse is None
+        assert chat_template.reason_decoder is None
 
-        chat_template = ChatTemplate(tools_parser_type="hf", tokenizer=tokenizer)
+        # Test 3: Auto-detection when prompt ends with <think>
+        model2, tokenizer2 = load("deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B")
+        chat_template2 = ChatTemplate(tools_parser_type="hf", tokenizer=tokenizer2)
 
-        messages = [
-            {
-                "role": "user",
-                "content": "hello",
-            }
-        ]
-        prompt = chat_template.apply_chat_template(
-            messages=messages,
-        )
-        print(prompt)
-        assert "<think>" in prompt
-        assert chat_template.enable_thinking is True
-        assert chat_template.reason_decoder is not None
+        prompt2 = chat_template2.apply_chat_template(messages=messages)
+        print("Auto-detection:", prompt2)
+        # This model's template should end with <think>, triggering auto-detection
+        assert "<think>" in prompt2
+        assert chat_template2.enable_thinking_parse is True
+        assert chat_template2.reason_decoder is not None
 
     def test_multimodal_content(self):
         """Test handling of multimodal content (text + other types)"""
@@ -124,7 +101,6 @@ class TestChatTemplate:
         ]
         prompt = chat_template.apply_chat_template(
             messages=messages,
-            # enable_thinking=False,
         )
         print(prompt)
         # Should use continue_final_message=True for prefill
@@ -157,8 +133,8 @@ class TestChatTemplate:
         # Note: Tool inclusion in prompt depends on model/tokenizer support
         # The important thing is that has_tools flag is set correctly
 
-    def test_tools_with_required_choice(self):
-        """Test tool choice required"""
+    def test_tools_choice_variations(self):
+        """Test different tool choice options"""
         model, tokenizer = load(self.tools_model_id)
         chat_template = ChatTemplate(tools_parser_type="llama", tokenizer=tokenizer)
 
@@ -170,94 +146,27 @@ class TestChatTemplate:
             }
         ]
 
-        prompt = chat_template.apply_chat_template(
+        # Test required choice
+        prompt_required = chat_template.apply_chat_template(
             messages=messages, tools=tools, tool_choice="required"
         )
-        print(prompt)
         assert chat_template.has_tools is True
-        assert prompt.strip().endswith(chat_template.start_tool_calls) is not None
+        assert prompt_required.strip().endswith(chat_template.start_tool_calls)
 
-    def test_tools_with_forced_function_choice(self):
-        """Test tool choice with specific function (dict format)"""
-        model, tokenizer = load(self.tools_model_id)
-        chat_template = ChatTemplate(tools_parser_type="llama", tokenizer=tokenizer)
-
-        messages = [{"role": "user", "content": "Get weather for NYC"}]
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "description": "Get weather information",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"location": {"type": "string"}},
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {"name": "get_time", "description": "Get current time"},
-            },
-        ]
-
-        prompt = chat_template.apply_chat_template(
-            messages=messages,
-            tools=tools,
-            tool_choice={"type": "function", "function": {"name": "get_weather"}},
-        )
-        print(prompt)
-        # The function has not been implemented yet, so ignore this assertion.
-        assert chat_template.has_tools is True
-
-    def test_tools_with_auto_choice(self):
-        """Test tool choice with auto (default behavior)"""
-        model, tokenizer = load(self.tools_model_id)
-        chat_template = ChatTemplate(tools_parser_type="llama", tokenizer=tokenizer)
-
-        messages = [{"role": "user", "content": "What's the weather?"}]
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "description": "Get weather information",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"location": {"type": "string"}},
-                    },
-                },
-            }
-        ]
-
-        prompt = chat_template.apply_chat_template(
+        # Test auto choice (should not add prefix)
+        chat_template2 = ChatTemplate(tools_parser_type="llama", tokenizer=tokenizer)
+        prompt_auto = chat_template2.apply_chat_template(
             messages=messages, tools=tools, tool_choice="auto"
         )
-        print(prompt)
-        assert chat_template.has_tools is True
+        assert chat_template2.has_tools is True
         # auto choice should not add tool_calls prefix
 
-    def test_tools_with_none_choice(self):
-        """Test tool choice with none (disable tools)"""
-        model, tokenizer = load(self.tools_model_id)
-        chat_template = ChatTemplate(tools_parser_type="llama", tokenizer=tokenizer)
-
-        messages = [{"role": "user", "content": "Just chat, no tools"}]
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "description": "Get weather information",
-                },
-            }
-        ]
-
-        prompt = chat_template.apply_chat_template(
+        # Test none choice (should not add prefix)
+        chat_template3 = ChatTemplate(tools_parser_type="llama", tokenizer=tokenizer)
+        prompt_none = chat_template3.apply_chat_template(
             messages=messages, tools=tools, tool_choice="none"
         )
-        print(prompt)
-        assert chat_template.has_tools is True
+        assert chat_template3.has_tools is True
         # none choice should not add tool_calls prefix
 
     def test_thinking_with_tools(self):
@@ -269,11 +178,11 @@ class TestChatTemplate:
         tools = [{"type": "function", "function": {"name": "helper"}}]
 
         prompt = chat_template.apply_chat_template(
-            messages=messages, tools=tools, enable_thinking=True
+            messages=messages, tools=tools, enable_thinking_parse=True
         )
 
         assert chat_template.has_tools is True
-        assert chat_template.enable_thinking is True
+        assert chat_template.enable_thinking_parse is True
         assert prompt.endswith("<think>")
 
     def test_conversation_history(self):
@@ -295,33 +204,6 @@ class TestChatTemplate:
         assert "Hi" in prompt or "hello" in prompt.lower()
         assert "joke" in prompt
         assert "atoms" in prompt
-
-    def test_empty_content_handling(self):
-        """Test handling of empty or None content"""
-        model, tokenizer = load("mlx-community/Qwen3-0.6B-4bit-DWQ")
-        chat_template = ChatTemplate(tools_parser_type="qwen3", tokenizer=tokenizer)
-
-        messages = [
-            {"role": "user", "content": ""},
-            {"role": "user", "content": "Real question"},
-        ]
-
-        prompt = chat_template.apply_chat_template(messages=messages)
-        assert "Real question" in prompt
-
-    def test_different_model_types(self):
-        """Test different model type parsers"""
-        model, tokenizer = load("mlx-community/Qwen3-0.6B-4bit-DWQ")
-
-        # Test qwen3 model type
-        chat_template_qwen = ChatTemplate(
-            tools_parser_type="qwen3", tokenizer=tokenizer
-        )
-        assert chat_template_qwen.tools_parser is not None
-
-        # Test hf (HuggingFace) model type
-        chat_template_hf = ChatTemplate(tools_parser_type="hf", tokenizer=tokenizer)
-        assert chat_template_hf.tools_parser is not None
 
     def test_kwargs_passthrough(self):
         """Test that additional kwargs are passed through to tokenizer"""

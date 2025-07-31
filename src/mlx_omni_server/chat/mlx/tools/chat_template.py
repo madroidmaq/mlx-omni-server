@@ -10,6 +10,9 @@ from .llama3 import Llama3ToolParser
 from .mistral import MistralToolsParser
 from .reasoning_decoder import ReasoningDecoder
 
+# Constants
+THINK_TAG = "<think>"
+
 
 def load_tools_parser(tools_parser_type: str) -> BaseToolParser:
     if tools_parser_type == "llama":
@@ -32,7 +35,7 @@ class ChatTemplate(ABC):
         self.tokenizer = tokenizer
         self.has_tools = False
         self.reason_decoder = None
-        self.enable_thinking: Optional[bool] = None
+        self.enable_thinking_parse: Optional[bool] = None
         self.tools_parser: Optional[BaseToolParser] = load_tools_parser(
             tools_parser_type
         )
@@ -71,7 +74,7 @@ class ChatTemplate(ABC):
             conversation.append(msg_dict)
 
         if kwargs:
-            self.enable_thinking = kwargs.pop("enable_thinking", None)
+            self.enable_thinking_parse = kwargs.pop("enable_thinking_parse", None)
             skip_thinking_prefill = kwargs.pop("skip_thinking_prefill", False)
         else:
             skip_thinking_prefill = False
@@ -80,7 +83,6 @@ class ChatTemplate(ABC):
             prompt = self.tokenizer.apply_chat_template(
                 conversation=conversation,
                 tools=schema_tools,
-                enable_thinking=self.enable_thinking,
                 tokenize=False,
                 continue_final_message=True,
                 **kwargs,
@@ -89,7 +91,6 @@ class ChatTemplate(ABC):
             prompt = self.tokenizer.apply_chat_template(
                 conversation=conversation,
                 tools=schema_tools,
-                enable_thinking=self.enable_thinking,
                 tokenize=False,
                 add_generation_prompt=True,
                 **kwargs,
@@ -118,43 +119,53 @@ class ChatTemplate(ABC):
 
         return prompt
 
+    def _detect_thinking_from_prompt(self, prompt: str) -> bool:
+        """Detect if prompt indicates thinking mode should be enabled.
+
+        Args:
+            prompt: The prompt string to analyze
+
+        Returns:
+            True if thinking should be auto-enabled, False otherwise
+        """
+        return prompt.rstrip().endswith(THINK_TAG)
+
     def _process_thinking_prompt(self, prompt: str, skip_thinking_prefill=False) -> str:
         """Process thinking-related prompt modifications.
 
         Logic overview:
-        - enable_thinking=True: Add <think> prefill (case3) or remove it if skip_thinking_prefill (json_schema case)
-        - enable_thinking=False: Add complete <think></think> block (case1)
-        - enable_thinking=None: Auto-detect or no modification (case2/case4)
+        - enable_thinking_parse=None: Auto-detect if prompt ends with <think>, if so set to True
+        - enable_thinking_parse=True: Extract thinking and content parts using current rules
+        - enable_thinking_parse=False: No modification to prompt
         """
-        enable_thinking = self.enable_thinking
+        enable_thinking_parse = self.enable_thinking_parse
+        stripped_prompt = prompt.rstrip()  # Single rstrip call for efficiency
 
-        # Case4: Auto-detect thinking if not explicitly set
-        if enable_thinking is None:
-            if prompt.rstrip().endswith("<think>"):
-                self.enable_thinking = True
-                enable_thinking = True
-            # If no <think> detected, remain None (case2 - no modification)
+        # Auto-detect thinking if not explicitly set
+        if enable_thinking_parse is None:
+            if self._detect_thinking_from_prompt(prompt):
+                self.enable_thinking_parse = True
+                enable_thinking_parse = True
+            # If no <think> detected, remain None (no modification)
 
-        if enable_thinking is True:  # Case3: Explicitly enable thinking
+        if enable_thinking_parse is True:
             if skip_thinking_prefill:
                 # With json_schema: ensure prompt doesn't end with <think>
-                if prompt.rstrip().endswith("<think>"):
-                    prompt = prompt.rstrip()[:-7]
+                if stripped_prompt.endswith(THINK_TAG):
+                    prompt = stripped_prompt[: -len(THINK_TAG)]
                 # Let OutlinesLogitsProcessor handle thinking pattern
-                self.reason_decoder = ReasoningDecoder(init_buffer="<think>")
+                self.reason_decoder = ReasoningDecoder(init_buffer=THINK_TAG)
             else:
                 # Without json_schema: ensure prompt ends with <think>
-                if not prompt.rstrip().endswith("<think>"):
-                    prompt = prompt + "<think>"
-                self.reason_decoder = ReasoningDecoder(init_buffer="<think>")
+                if not stripped_prompt.endswith(THINK_TAG):
+                    prompt = prompt + THINK_TAG
+                self.reason_decoder = ReasoningDecoder(init_buffer=THINK_TAG)
 
-        elif enable_thinking is False:  # Case1: Explicitly disable thinking
-            # Add complete thinking block regardless of skip_thinking_prefill
-            if not prompt.rstrip().endswith("</think>"):
-                prompt = prompt + "<think>\n\n</think>\n\n"
-            self.reason_decoder = None  # No decoder needed for disabled thinking
+        elif enable_thinking_parse is False:
+            # No modification to prompt
+            self.reason_decoder = None
 
-        # enable_thinking is None: Case2 - no modification, no decoder setup
+        # enable_thinking_parse is None: no modification, no decoder setup
 
         return prompt
 
