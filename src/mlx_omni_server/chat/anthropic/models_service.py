@@ -2,7 +2,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from ..models.models_service import ModelCacheScanner
+from mlx_omni_server.chat.openai.models import ModelCacheScanner
+
 from .schema import AnthropicModelInfo, AnthropicModelList
 
 

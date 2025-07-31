@@ -4,9 +4,12 @@ from typing import Generator, Optional
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .mlx.wrapper_cache import wrapper_cache
-from .openai_adapter import OpenAIAdapter
-from .schema import ChatCompletionRequest, ChatCompletionResponse
+from mlx_omni_server.chat.mlx.wrapper_cache import wrapper_cache
+from mlx_omni_server.chat.openai.openai_adapter import OpenAIAdapter
+from mlx_omni_server.chat.openai.schema import (
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+)
 
 router = APIRouter(tags=["chat—completions"])
 

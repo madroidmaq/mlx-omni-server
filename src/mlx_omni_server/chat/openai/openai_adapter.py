@@ -6,7 +6,7 @@ from mlx_omni_server.chat.mlx.mlx_generate_wrapper import (
     DEFAULT_MAX_TOKENS,
     MLXGenerateWrapper,
 )
-from mlx_omni_server.chat.schema import (
+from mlx_omni_server.chat.openai.schema import (
     ChatCompletionChoice,
     ChatCompletionChunk,
     ChatCompletionChunkChoice,
