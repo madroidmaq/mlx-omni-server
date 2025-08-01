@@ -61,7 +61,7 @@ class Llama3ToolParser(BaseToolParser):
             tool_calls = self._parse_strict_tools(response)
         else:
             # Use extract_tools for non-strict mode parsing
-            from .utils import extract_tools
+            from .base_tools import extract_tools
 
             tool_calls = extract_tools(response)
 

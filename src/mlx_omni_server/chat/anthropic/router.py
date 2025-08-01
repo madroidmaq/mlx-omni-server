@@ -85,11 +85,11 @@ def _create_anthropic_model(
 ) -> AnthropicMessagesAdapter:
     """Create an Anthropic Messages adapter based on the model parameters.
 
-    Uses the shared wrapper cache to get or create MLXGenerateWrapper instance.
+    Uses the shared wrapper cache to get or create ChatGenerator instance.
     This avoids expensive model reloading when the same model configuration
     is used across different requests or API endpoints.
     """
-    # Get cached or create new MLXGenerateWrapper
+    # Get cached or create new ChatGenerator
     wrapper = wrapper_cache.get_wrapper(
         model_id=model_id,
         adapter_path=adapter_path,

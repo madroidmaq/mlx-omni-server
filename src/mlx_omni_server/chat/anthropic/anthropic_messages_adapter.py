@@ -27,18 +27,18 @@ from mlx_omni_server.chat.anthropic.anthropic_schema import (
     ToolUseBlock,
     Usage,
 )
-from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
+from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
 from mlx_omni_server.utils.logger import logger
 
 
 class AnthropicMessagesAdapter:
     """Anthropic Messages API adapter with internal parameter management."""
 
-    def __init__(self, wrapper: MLXGenerateWrapper):
+    def __init__(self, wrapper: ChatGenerator):
         """Initialize adapter with wrapper object.
 
         Args:
-            wrapper: MLXGenerateWrapper instance (cached and ready to use)
+            wrapper: ChatGenerator instance (cached and ready to use)
         """
         self._default_max_tokens = 2048
         self._generate_wrapper = wrapper
@@ -162,7 +162,7 @@ class AnthropicMessagesAdapter:
             request: Anthropic Messages API request
 
         Returns:
-            Parameters for MLXGenerateWrapper
+            Parameters for ChatGenerator
         """
         # Convert messages
         messages = self._convert_system_to_messages(request.system, request.messages)
@@ -197,7 +197,7 @@ class AnthropicMessagesAdapter:
             "enable_prompt_cache": True,
         }
 
-        # Note: MLXGenerateWrapper doesn't currently support stop_sequences
+        # Note: ChatGenerator doesn't currently support stop_sequences
         # This is a known limitation that will be addressed in the future
         # if request.stop_sequences:
         #     params["stop_sequences"] = request.stop_sequences

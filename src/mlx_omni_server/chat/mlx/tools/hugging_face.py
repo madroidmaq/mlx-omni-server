@@ -2,8 +2,7 @@ from typing import List, Optional
 
 from ....utils.logger import logger
 from ..core_types import ToolCall
-from .base_tools import BaseToolParser
-from .utils import extract_tools
+from .base_tools import BaseToolParser, extract_tools
 
 
 class HuggingFaceToolParser(BaseToolParser):

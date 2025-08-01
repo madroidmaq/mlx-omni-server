@@ -1,11 +1,11 @@
-"""Tests for MLXGenerateWrapper."""
+"""Tests for ChatGenerator tools calling."""
 
 import logging
 
 import pytest
 
+from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
 from mlx_omni_server.chat.mlx.core_types import CompletionContent, GenerationResult
-from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
 
 # Configure logging for tests
 logging.basicConfig(level=logging.INFO)
@@ -16,22 +16,22 @@ logger = logging.getLogger(__name__)
 def model_cache():
     """Create a model cache with gemma-3-1b for testing."""
     model_name = "mlx-community/gemma-3-1b-it-4bit-DWQ"
-    return MLXGenerateWrapper.create(model_name).model
+    return ChatGenerator.create(model_name).model
 
 
 @pytest.fixture
 def mlx_wrapper():
-    """Create MLXGenerateWrapper instance for testing."""
+    """Create ChatGenerator instance for testing."""
     model_name = "mlx-community/gemma-3-1b-it-4bit-DWQ"
-    return MLXGenerateWrapper.create(model_name)
+    return ChatGenerator.create(model_name)
 
 
-class TestMLXGenerateWrapperToolsCalling:
-    """Test MLXGenerateWrapper functionality."""
+class TestChatGeneratorToolsCalling:
+    """Test ChatGenerator tools calling functionality."""
 
     def test_reasoning_tools_calling(self):
         model_name = "mlx-community/Qwen3-0.6B-4bit-DWQ"
-        mlx_wrapper = MLXGenerateWrapper.create(model_name)
+        mlx_wrapper = ChatGenerator.create(model_name)
 
         messages = [{"role": "user", "content": "What's the weather like in New York?"}]
 

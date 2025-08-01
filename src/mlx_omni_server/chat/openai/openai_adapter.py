@@ -2,10 +2,7 @@ import time
 import uuid
 from typing import Generator
 
-from mlx_omni_server.chat.mlx.mlx_generate_wrapper import (
-    DEFAULT_MAX_TOKENS,
-    MLXGenerateWrapper,
-)
+from mlx_omni_server.chat.mlx.chat_generator import DEFAULT_MAX_TOKENS, ChatGenerator
 from mlx_omni_server.chat.openai.schema import (
     ChatCompletionChoice,
     ChatCompletionChunk,
@@ -24,12 +21,12 @@ class OpenAIAdapter:
 
     def __init__(
         self,
-        wrapper: MLXGenerateWrapper,
+        wrapper: ChatGenerator,
     ):
         """Initialize MLXModel with wrapper object.
 
         Args:
-            wrapper: MLXGenerateWrapper instance (cached and ready to use)
+            wrapper: ChatGenerator instance (cached and ready to use)
         """
         self._default_max_tokens = DEFAULT_MAX_TOKENS
         self._generate_wrapper = wrapper

@@ -1,4 +1,4 @@
-"""MLX Generate Wrapper - Core abstraction layer over mlx-lm."""
+"""Chat Generator - Core abstraction layer over mlx-lm for chat completions."""
 
 from typing import Any, Callable, Dict, Generator, List, Optional, Union
 
@@ -21,8 +21,8 @@ from .model_types import MLXModel
 DEFAULT_MAX_TOKENS = 4096
 
 
-class MLXGenerateWrapper:
-    """Core wrapper around mlx-lm with unified interface.
+class ChatGenerator:
+    """Core chat generator with unified interface for MLX-based text generation.
 
     This class provides a thin abstraction over mlx-lm's generate functions,
     adding common extensions like tools, reasoning, and caching while keeping
@@ -47,8 +47,8 @@ class MLXGenerateWrapper:
         model_id: str,
         adapter_path: Optional[str] = None,
         draft_model_id: Optional[str] = None,
-    ) -> "MLXGenerateWrapper":
-        """Factory method to create MLXGenerateWrapper with simplified interface.
+    ) -> "ChatGenerator":
+        """Factory method to create ChatGenerator with simplified interface.
 
         Args:
             model_id: Model name/path (HuggingFace model ID or local path)
@@ -56,20 +56,20 @@ class MLXGenerateWrapper:
             draft_model_id: Optional draft model name/path for speculative decoding
 
         Returns:
-            MLXGenerateWrapper instance ready for use
+            ChatGenerator instance ready for use
 
         Examples:
             # Simple model loading
-            wrapper = MLXGenerateWrapper.create("mlx-community/Qwen3-0.6B-4bit")
+            wrapper = ChatGenerator.create("mlx-community/Qwen3-0.6B-4bit")
 
             # With adapter
-            wrapper = MLXGenerateWrapper.create(
+            wrapper = ChatGenerator.create(
                 model_id="mlx-community/Llama-3.1-8B-Instruct-4bit",
                 adapter_path="/path/to/adapter"
             )
 
             # With draft model for speculative decoding
-            wrapper = MLXGenerateWrapper.create(
+            wrapper = ChatGenerator.create(
                 model_id="mlx-community/Llama-3.1-8B-Instruct-4bit",
                 draft_model_id="mlx-community/Qwen3-0.6B-4bit"
             )
@@ -82,7 +82,7 @@ class MLXGenerateWrapper:
             )
             return cls(model)
         except Exception as e:
-            logger.error(f"Failed to create MLXGenerateWrapper: {e}")
+            logger.error(f"Failed to create ChatGenerator: {e}")
             raise
 
     @property

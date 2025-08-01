@@ -1,6 +1,6 @@
-"""Centralized MLXGenerateWrapper Cache
+"""Centralized ChatGenerator Cache
 
-This module provides a unified caching system for MLXGenerateWrapper instances
+This module provides a unified caching system for ChatGenerator instances
 to avoid expensive model reloading when the same model configuration is used
 across different API endpoints.
 """
@@ -12,12 +12,12 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 from ...utils.logger import logger
-from .mlx_generate_wrapper import MLXGenerateWrapper
+from .chat_generator import ChatGenerator
 
 
 @dataclass(frozen=True)
 class WrapperCacheKey:
-    """Cache key for MLXGenerateWrapper instances.
+    """Cache key for ChatGenerator instances.
 
     Uses all parameters that affect model loading to ensure proper cache invalidation
     when any of these parameters change.
@@ -29,7 +29,7 @@ class WrapperCacheKey:
 
 
 class MLXWrapperCache:
-    """Thread-safe LRU cache for MLXGenerateWrapper instances with TTL support.
+    """Thread-safe LRU cache for ChatGenerator instances with TTL support.
 
     This cache ensures that expensive model loading only happens once per unique
     combination of (model_id, adapter_path, draft_model_id). All API endpoints
@@ -47,7 +47,7 @@ class MLXWrapperCache:
             ttl_seconds: Time to live in seconds, after which unused models
                         are evicted from cache (default: 300 seconds = 5 minutes)
         """
-        self._cache: OrderedDict[WrapperCacheKey, MLXGenerateWrapper] = OrderedDict()
+        self._cache: OrderedDict[WrapperCacheKey, ChatGenerator] = OrderedDict()
         self._access_times: Dict[WrapperCacheKey, float] = {}
         self._lock = threading.Lock()
         self._max_size = max_size
@@ -93,7 +93,7 @@ class MLXWrapperCache:
             logger.info(f"Evicted LRU model from cache: {lru_key}")
 
             # Optional: Clean up the evicted wrapper's resources
-            # This could include clearing VRAM, etc., but MLXGenerateWrapper
+            # This could include clearing VRAM, etc., but ChatGenerator
             # doesn't currently expose cleanup methods
 
     def _update_access_time(self, key: WrapperCacheKey) -> None:
@@ -108,8 +108,8 @@ class MLXWrapperCache:
         model_id: str,
         adapter_path: Optional[str] = None,
         draft_model_id: Optional[str] = None,
-    ) -> MLXGenerateWrapper:
-        """Get or create MLXGenerateWrapper instance.
+    ) -> ChatGenerator:
+        """Get or create ChatGenerator instance.
 
         Args:
             model_id: Model name/path (HuggingFace model ID or local path)
@@ -117,7 +117,7 @@ class MLXWrapperCache:
             draft_model_id: Optional draft model name/path for speculative decoding
 
         Returns:
-            Cached or newly created MLXGenerateWrapper instance
+            Cached or newly created ChatGenerator instance
 
         Note:
             This method is thread-safe and will only create one wrapper instance
@@ -139,7 +139,7 @@ class MLXWrapperCache:
                 if key in self._cache:
                     # Update access time for LRU and TTL
                     self._update_access_time(key)
-                    logger.debug(f"Cache hit for MLXGenerateWrapper: {key}")
+                    logger.debug(f"Cache hit for ChatGenerator: {key}")
                     return self._cache[key]
 
         with self._lock:
@@ -149,16 +149,16 @@ class MLXWrapperCache:
             # Check again inside lock in case another thread created it
             if key in self._cache:
                 self._update_access_time(key)
-                logger.debug(f"Cache hit (after lock) for MLXGenerateWrapper: {key}")
+                logger.debug(f"Cache hit (after lock) for ChatGenerator: {key}")
                 return self._cache[key]
 
             # Cache miss - evict LRU if needed before creating new wrapper
             self._evict_lru_if_needed()
 
             # Create new wrapper
-            logger.info(f"Creating new MLXGenerateWrapper for: {key}")
+            logger.info(f"Creating new ChatGenerator for: {key}")
             try:
-                wrapper = MLXGenerateWrapper.create(
+                wrapper = ChatGenerator.create(
                     model_id=model_id,
                     adapter_path=adapter_path,
                     draft_model_id=draft_model_id,
@@ -169,16 +169,16 @@ class MLXWrapperCache:
                     self._cache[key] = wrapper
                     self._update_access_time(key)
                     logger.info(
-                        f"Successfully cached MLXGenerateWrapper: {key} (cache size: {len(self._cache)}/{self._max_size})"
+                        f"Successfully cached ChatGenerator: {key} (cache size: {len(self._cache)}/{self._max_size})"
                     )
                 else:
                     logger.info(
-                        f"Created MLXGenerateWrapper but not cached (max_size=0): {key}"
+                        f"Created ChatGenerator but not cached (max_size=0): {key}"
                     )
 
                 return wrapper
             except Exception as e:
-                logger.error(f"Failed to create MLXGenerateWrapper for {key}: {e}")
+                logger.error(f"Failed to create ChatGenerator for {key}: {e}")
                 raise
 
     def cleanup_expired_items(self) -> int:
@@ -209,7 +209,7 @@ class MLXWrapperCache:
             cache_size = len(self._cache)
             self._cache.clear()
             self._access_times.clear()
-            logger.info(f"Cleared MLXGenerateWrapper cache ({cache_size} entries)")
+            logger.info(f"Cleared ChatGenerator cache ({cache_size} entries)")
 
     def get_cache_info(self) -> Dict[str, any]:
         """Get cache statistics.

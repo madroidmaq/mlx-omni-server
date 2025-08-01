@@ -13,7 +13,7 @@ import pytest
 from mlx_omni_server.chat.mlx.wrapper_cache import MLXWrapperCache, WrapperCacheKey
 
 
-class MockMLXGenerateWrapper:
+class MockChatGenerator:
     """Mock wrapper for testing without actual model loading."""
 
     def __init__(self, model_id: str):
@@ -55,16 +55,16 @@ class TestMLXWrapperCache:
         """Set up test fixtures."""
         self.cache = MLXWrapperCache(max_size=3)
 
-    @patch("mlx_omni_server.chat.mlx.wrapper_cache.MLXGenerateWrapper.create")
+    @patch("mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create")
     def test_caching_and_lru_eviction(self, mock_create):
         """Test caching behavior, different keys, LRU eviction, and order tracking."""
         mock_create.side_effect = [
-            MockMLXGenerateWrapper("model1"),
-            MockMLXGenerateWrapper("model1_adapter"),
-            MockMLXGenerateWrapper("model2"),
-            MockMLXGenerateWrapper("model3"),
-            MockMLXGenerateWrapper("model4"),
-            MockMLXGenerateWrapper("model1_adapter_again"),  # For LRU order test
+            MockChatGenerator("model1"),
+            MockChatGenerator("model1_adapter"),
+            MockChatGenerator("model2"),
+            MockChatGenerator("model3"),
+            MockChatGenerator("model4"),
+            MockChatGenerator("model1_adapter_again"),  # For LRU order test
         ]
 
         # Test cache miss and hit
@@ -107,12 +107,12 @@ class TestMLXWrapperCache:
         # model1_adapter should now be most recent
         assert "adapter" in updated_info["lru_order"][0]
 
-    @patch("mlx_omni_server.chat.mlx.wrapper_cache.MLXGenerateWrapper.create")
+    @patch("mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create")
     def test_cache_management(self, mock_create):
         """Test cache size changes, clearing, and error handling."""
         mock_create.side_effect = [
-            MockMLXGenerateWrapper("model1"),
-            MockMLXGenerateWrapper("model2"),
+            MockChatGenerator("model1"),
+            MockChatGenerator("model2"),
             RuntimeError("Model loading failed"),
         ]
 
@@ -150,12 +150,12 @@ class TestMLXWrapperCacheThreadSafety:
         """Mock create method with artificial delay to test concurrency."""
         time.sleep(0.01)  # Small delay to increase chance of race conditions
         self.creation_count += 1
-        return MockMLXGenerateWrapper(f"{model_id}_{self.creation_count}")
+        return MockChatGenerator(f"{model_id}_{self.creation_count}")
 
     def test_concurrent_access(self):
         """Test concurrent access for same and different cache keys."""
         with patch(
-            "mlx_omni_server.chat.mlx.wrapper_cache.MLXGenerateWrapper.create"
+            "mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create"
         ) as mock_create:
             mock_create.side_effect = self.mock_create_with_delay
 
@@ -208,10 +208,10 @@ class TestMLXWrapperCacheTTL:
         # Use short TTL for faster testing
         self.cache = MLXWrapperCache(max_size=5, ttl_seconds=1)
 
-    @patch("mlx_omni_server.chat.mlx.wrapper_cache.MLXGenerateWrapper.create")
+    @patch("mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create")
     def test_ttl_expiration_and_renewal(self, mock_create):
         """Test TTL expiration, renewal on access, and cache info."""
-        mock_create.return_value = MockMLXGenerateWrapper("model1")
+        mock_create.return_value = MockChatGenerator("model1")
 
         # Add item and verify TTL info
         self.cache.get_wrapper("model1")
@@ -232,20 +232,20 @@ class TestMLXWrapperCacheTTL:
         info = self.cache.get_cache_info()
         assert info["cache_size"] == 0
 
-    @patch("mlx_omni_server.chat.mlx.wrapper_cache.MLXGenerateWrapper.create")
+    @patch("mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create")
     def test_ttl_management(self, mock_create):
         """Test TTL disabled, manual cleanup, and TTL+LRU interaction."""
         mock_create.side_effect = [
-            MockMLXGenerateWrapper("model1"),
-            MockMLXGenerateWrapper("model2"),
+            MockChatGenerator("model1"),
+            MockChatGenerator("model2"),
         ]
 
         # Test TTL disabled
         cache_no_ttl = MLXWrapperCache(max_size=3, ttl_seconds=0)
         with patch(
-            "mlx_omni_server.chat.mlx.wrapper_cache.MLXGenerateWrapper.create"
+            "mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create"
         ) as mock_no_ttl:
-            mock_no_ttl.return_value = MockMLXGenerateWrapper("model_no_ttl")
+            mock_no_ttl.return_value = MockChatGenerator("model_no_ttl")
             cache_no_ttl.get_wrapper("model_no_ttl")
             time.sleep(0.1)
             info = cache_no_ttl.get_cache_info()
@@ -268,10 +268,10 @@ class TestMLXWrapperCacheTTL:
         # Test TTL + LRU interaction
         ttl_lru_cache = MLXWrapperCache(max_size=2, ttl_seconds=0.5)
         with patch(
-            "mlx_omni_server.chat.mlx.wrapper_cache.MLXGenerateWrapper.create"
+            "mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create"
         ) as mock_ttl_lru:
             mock_ttl_lru.side_effect = [
-                MockMLXGenerateWrapper(f"model{i}") for i in range(1, 4)
+                MockChatGenerator(f"model{i}") for i in range(1, 4)
             ]
             ttl_lru_cache.get_wrapper("model1")
             time.sleep(0.1)
@@ -291,9 +291,9 @@ class TestMLXWrapperCacheEdgeCases:
         # Test zero max size - should work but not cache
         zero_cache = MLXWrapperCache(max_size=0)
         with patch(
-            "mlx_omni_server.chat.mlx.wrapper_cache.MLXGenerateWrapper.create"
+            "mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create"
         ) as mock_zero:
-            mock_zero.return_value = MockMLXGenerateWrapper("model1")
+            mock_zero.return_value = MockChatGenerator("model1")
             wrapper = zero_cache.get_wrapper("model1")
             assert wrapper is not None
             assert zero_cache.get_cache_info()["cache_size"] == 0
@@ -301,11 +301,11 @@ class TestMLXWrapperCacheEdgeCases:
         # Test single item cache - should evict on second addition
         single_cache = MLXWrapperCache(max_size=1)
         with patch(
-            "mlx_omni_server.chat.mlx.wrapper_cache.MLXGenerateWrapper.create"
+            "mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create"
         ) as mock_single:
             mock_single.side_effect = [
-                MockMLXGenerateWrapper("model1"),
-                MockMLXGenerateWrapper("model2"),
+                MockChatGenerator("model1"),
+                MockChatGenerator("model2"),
             ]
             single_cache.get_wrapper("model1")
             assert single_cache.get_cache_info()["cache_size"] == 1

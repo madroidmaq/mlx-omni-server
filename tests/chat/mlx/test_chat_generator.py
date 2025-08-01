@@ -1,25 +1,25 @@
-"""Tests for MLXGenerateWrapper."""
+"""Tests for ChatGenerator."""
 
 import pytest
 
+from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
 from mlx_omni_server.chat.mlx.core_types import (
     CompletionContent,
     GenerationResult,
     StreamContent,
 )
-from mlx_omni_server.chat.mlx.mlx_generate_wrapper import MLXGenerateWrapper
 from mlx_omni_server.utils.logger import logger
 
 
 @pytest.fixture
 def mlx_wrapper():
-    """Create MLXGenerateWrapper instance for testing."""
+    """Create ChatGenerator instance for testing."""
     model_name = "mlx-community/gemma-3-1b-it-4bit-DWQ"
-    return MLXGenerateWrapper.create(model_name)
+    return ChatGenerator.create(model_name)
 
 
-class TestMLXGenerateWrapper:
-    """Test MLXGenerateWrapper functionality."""
+class TestChatGenerator:
+    """Test ChatGenerator functionality."""
 
     def test_initialization(self, mlx_wrapper):
         """Test basic initialization."""
@@ -235,7 +235,7 @@ class TestMLXGenerateWrapper:
 
     def test_streaming_reasoning_mode(self):
         """Test streaming with reasoning/thinking enabled."""
-        reasoning_wrapper = MLXGenerateWrapper.create("mlx-community/Qwen3-0.6B-4bit")
+        reasoning_wrapper = ChatGenerator.create("mlx-community/Qwen3-0.6B-4bit")
 
         messages = [{"role": "user", "content": "Calculate 23 * 17"}]
 
@@ -263,9 +263,7 @@ class TestMLXGenerateWrapper:
         """Test with actual reasoning model (Qwen3-0.6B-4bit) - optional test."""
         try:
             # Try to load reasoning model
-            reasoning_wrapper = MLXGenerateWrapper.create(
-                "mlx-community/Qwen3-0.6B-4bit"
-            )
+            reasoning_wrapper = ChatGenerator.create("mlx-community/Qwen3-0.6B-4bit")
 
             messages = [
                 {
