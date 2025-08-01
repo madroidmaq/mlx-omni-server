@@ -1,6 +1,6 @@
 import unittest
 
-from mlx_omni_server.chat.mlx.tools.utils import extract_tools
+from mlx_omni_server.chat.mlx.tools.base_tools import extract_tools
 
 
 class TestToolsParse(unittest.TestCase):
