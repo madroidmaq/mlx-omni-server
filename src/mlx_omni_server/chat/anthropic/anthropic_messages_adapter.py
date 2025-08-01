@@ -236,8 +236,8 @@ class AnthropicMessagesAdapter:
                 blocks.append(
                     ToolUseBlock(
                         id=tool_call.id,
-                        name=tool_call.function.name,
-                        input=tool_call.function.arguments,
+                        name=tool_call.name,
+                        input=tool_call.arguments,
                     )
                 )
 

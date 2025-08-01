@@ -8,6 +8,7 @@ from .base_tools import BaseToolParser
 from .hugging_face import HuggingFaceToolParser
 from .llama3 import Llama3ToolParser
 from .mistral import MistralToolsParser
+from .qwen3_moe_tools_parser import Qwen3MoeToolParser
 from .reasoning_decoder import ReasoningDecoder
 
 # Constants
@@ -21,6 +22,8 @@ def load_tools_parser(tools_parser_type: str) -> BaseToolParser:
         return MistralToolsParser()
     if tools_parser_type == "qwen2" or tools_parser_type == "qwen3":
         return HuggingFaceToolParser()
+    if tools_parser_type == "qwen3_moe":
+        return Qwen3MoeToolParser()
     else:
         return HuggingFaceToolParser()
 
@@ -196,6 +199,10 @@ class ChatTemplate(ABC):
 
         if self.has_tools:
             tool_calls = self.tools_parser.parse_tools(content)
+
+            # If tool calls were found, clear content to avoid duplication
+            if tool_calls:
+                content = ""
 
         return ChatTemplateResult(
             content=content, thinking=thinking, tool_calls=tool_calls
