@@ -2,19 +2,19 @@ import logging
 
 import pytest
 
-from mlx_omni_server.chat.mlx.tools.reasoning_decoder import ReasoningDecoder
+from mlx_omni_server.chat.mlx.tools.thinking_decoder import ThinkingDecoder
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class TestReasoningDecoder:
-    """Test functionality of the ReasoningDecoder class"""
+class TestThinkingDecoder:
+    """Test functionality of the ThinkingDecoder class"""
 
     @pytest.fixture
     def decoder(self):
-        """Create a ReasoningDecoder instance"""
-        decoder = ReasoningDecoder()
+        """Create a ThinkingDecoder instance"""
+        decoder = ThinkingDecoder()
         return decoder
 
     def test_parse_response_with_empty_thinking(self, decoder):
@@ -26,7 +26,7 @@ class TestReasoningDecoder:
         result = decoder._parse_response(test_response)
 
         # Verify results
-        assert result["reasoning"] == ""
+        assert result["thinking"] == ""
         assert result["content"] == "Here is the final answer."
 
     def test_parse_response_with_thinking(self, decoder):
@@ -39,7 +39,7 @@ class TestReasoningDecoder:
 
         # Verify results
         assert (
-            result["reasoning"] == "This is a thinking process.\nAnalyzing the request."
+            result["thinking"] == "This is a thinking process.\nAnalyzing the request."
         )
         assert result["content"] == "Here is the final answer."
 
@@ -52,7 +52,7 @@ class TestReasoningDecoder:
         result = decoder._parse_response(test_response)
 
         # Verify results
-        assert result["reasoning"] is None
+        assert result["thinking"] is None
         assert result["content"] == "This is a direct response without thinking tags."
 
     def test_decode_with_thinking_enabled(self, decoder):
@@ -64,7 +64,7 @@ class TestReasoningDecoder:
         result = decoder.decode(test_text)
 
         # Verify results
-        assert result["reasoning"] == "Reasoning process"
+        assert result["thinking"] == "Reasoning process"
         assert result["content"] == "Final answer"
 
     def test_parse_stream_response_thinking_mode(self, decoder):
@@ -75,32 +75,32 @@ class TestReasoningDecoder:
         # Step 1: Start with thinking tag
         result = decoder._parse_stream_response(f"<{decoder.thinking_tag}>")
         assert result["delta_content"] is None
-        assert result["delta_reasoning"] == ""
+        assert result["delta_thinking"] == ""
 
         # Step 2: First part of thinking content
         result = decoder._parse_stream_response("I'm thinking ")
         assert result["delta_content"] is None
-        assert result["delta_reasoning"] == "I'm thinking "
+        assert result["delta_thinking"] == "I'm thinking "
 
         # Step 3: Second part of thinking content
         result = decoder._parse_stream_response("about this problem.")
         assert result["delta_content"] is None
-        assert result["delta_reasoning"] == "about this problem."
+        assert result["delta_thinking"] == "about this problem."
 
         # Step 4: Receive end tag
         result = decoder._parse_stream_response(f"</{decoder.thinking_tag}>")
         assert result["delta_content"] == ""
-        assert result["delta_reasoning"] is None
+        assert result["delta_thinking"] is None
 
         # Step 5: First part of final content
         result = decoder._parse_stream_response("Here is ")
         assert result["delta_content"] == "Here is "
-        assert result["delta_reasoning"] is None
+        assert result["delta_thinking"] is None
 
         # Step 6: Second part of final content
         result = decoder._parse_stream_response("the answer.")
         assert result["delta_content"] == "the answer."
-        assert result["delta_reasoning"] is None
+        assert result["delta_thinking"] is None
 
         # Verify accumulated text has everything
         expected_text = f"<{decoder.thinking_tag}>I'm thinking about this problem.</{decoder.thinking_tag}>Here is the answer."
@@ -118,8 +118,8 @@ Hello! How can I assist you today? 😊"""
         result = decoder._parse_response(test_response)
 
         # Verify results
-        expected_reasoning = """Okay, the user is just greeting me."""
+        expected_thinking = """Okay, the user is just greeting me."""
         expected_content = "Hello! How can I assist you today? 😊"
 
-        assert result["reasoning"] == expected_reasoning
+        assert result["thinking"] == expected_thinking
         assert result["content"] == expected_content

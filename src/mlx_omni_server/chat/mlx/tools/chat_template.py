@@ -9,7 +9,7 @@ from .hugging_face import HuggingFaceToolParser
 from .llama3 import Llama3ToolParser
 from .mistral import MistralToolsParser
 from .qwen3_moe_tools_parser import Qwen3MoeToolParser
-from .reasoning_decoder import ReasoningDecoder
+from .thinking_decoder import ThinkingDecoder
 
 # Constants
 THINK_TAG = "<think>"
@@ -157,12 +157,12 @@ class ChatTemplate(ABC):
                 if stripped_prompt.endswith(THINK_TAG):
                     prompt = stripped_prompt[: -len(THINK_TAG)]
                 # Let OutlinesLogitsProcessor handle thinking pattern
-                self.reason_decoder = ReasoningDecoder(init_buffer=THINK_TAG)
+                self.reason_decoder = ThinkingDecoder(init_buffer=THINK_TAG)
             else:
                 # Without json_schema: ensure prompt ends with <think>
                 if not stripped_prompt.endswith(THINK_TAG):
                     prompt = prompt + THINK_TAG
-                self.reason_decoder = ReasoningDecoder(init_buffer=THINK_TAG)
+                self.reason_decoder = ThinkingDecoder(init_buffer=THINK_TAG)
 
         elif enable_thinking_parse is False:
             # No modification to prompt
@@ -174,17 +174,17 @@ class ChatTemplate(ABC):
 
     def stream_parse_chat_result(self, text: str) -> ChatTemplateResult:
         delta_content = text
-        delta_reasoning = None
+        delta_thinking = None
 
         if self.reason_decoder is not None:
             result = self.reason_decoder.stream_decode(text)
             delta_content = result.get("delta_content") or ""
-            delta_reasoning = result.get("delta_reasoning")
+            delta_thinking = result.get("delta_thinking")
 
         # TODO: support stream parse tools
         return ChatTemplateResult(
             content=delta_content,
-            thinking=delta_reasoning,
+            thinking=delta_thinking,
         )
 
     def parse_chat_response(self, text: str) -> ChatTemplateResult:
@@ -195,7 +195,7 @@ class ChatTemplate(ABC):
         if self.reason_decoder is not None:
             result = self.reason_decoder.decode(text)
             content = result.get("content")
-            thinking = result.get("reasoning")
+            thinking = result.get("thinking")
 
         if self.has_tools:
             tool_calls = self.tools_parser.parse_tools(content)
