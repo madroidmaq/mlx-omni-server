@@ -4,7 +4,7 @@ from typing import Generator, Optional
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from mlx_omni_server.chat.mlx.wrapper_cache import wrapper_cache
+from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
 from mlx_omni_server.chat.openai.openai_adapter import OpenAIAdapter
 from mlx_omni_server.chat.openai.schema import (
     ChatCompletionRequest,
@@ -57,7 +57,7 @@ def _create_text_model(
     is used across different requests or API endpoints.
     """
     # Get cached or create new ChatGenerator
-    wrapper = wrapper_cache.get_wrapper(
+    wrapper = ChatGenerator.get_or_create(
         model_id=model_id,
         adapter_path=adapter_path,
         draft_model_id=draft_model,

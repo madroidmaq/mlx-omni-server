@@ -8,7 +8,7 @@ from mlx_omni_server.chat.anthropic.anthropic_messages_adapter import (
     AnthropicMessagesAdapter,
 )
 
-from ..mlx.wrapper_cache import wrapper_cache
+from ..mlx.chat_generator import ChatGenerator
 from .anthropic_schema import MessagesRequest, MessagesResponse
 from .models_service import AnthropicModelsService
 from .schema import AnthropicModelList
@@ -90,7 +90,7 @@ def _create_anthropic_model(
     is used across different requests or API endpoints.
     """
     # Get cached or create new ChatGenerator
-    wrapper = wrapper_cache.get_wrapper(
+    wrapper = ChatGenerator.get_or_create(
         model_id=model_id,
         adapter_path=adapter_path,
         draft_model_id=draft_model,

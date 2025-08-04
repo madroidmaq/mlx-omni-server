@@ -86,6 +86,56 @@ class ChatGenerator:
             logger.error(f"Failed to create ChatGenerator: {e}")
             raise
 
+    @classmethod
+    def get_or_create(
+        cls,
+        model_id: str,
+        adapter_path: Optional[str] = None,
+        draft_model_id: Optional[str] = None,
+    ) -> "ChatGenerator":
+        """Get or create cached ChatGenerator instance.
+
+        This method provides a unified API for obtaining ChatGenerator instances
+        with automatic caching. It will return existing cached instances when
+        available, or create new ones as needed.
+
+        Args:
+            model_id: Model name/path (HuggingFace model ID or local path)
+            adapter_path: Optional path to LoRA adapter
+            draft_model_id: Optional draft model name/path for speculative decoding
+
+        Returns:
+            Cached or newly created ChatGenerator instance
+
+        Examples:
+            # Get or create simple model
+            generator = ChatGenerator.get_or_create("mlx-community/Qwen3-0.6B-4bit")
+
+            # With adapter
+            generator = ChatGenerator.get_or_create(
+                model_id="mlx-community/Llama-3.1-8B-Instruct-4bit",
+                adapter_path="/path/to/adapter"
+            )
+
+            # With draft model for speculative decoding
+            generator = ChatGenerator.get_or_create(
+                model_id="mlx-community/Llama-3.1-8B-Instruct-4bit",
+                draft_model_id="mlx-community/Qwen3-0.6B-4bit"
+            )
+
+        Note:
+            This method is thread-safe and uses the global wrapper cache for
+            efficient memory usage across different API endpoints.
+        """
+        # Import here to avoid circular imports
+        from .wrapper_cache import wrapper_cache
+
+        return wrapper_cache.get_wrapper(
+            model_id=model_id,
+            adapter_path=adapter_path,
+            draft_model_id=draft_model_id,
+        )
+
     @property
     def prompt_cache(self):
         """Lazy initialization of prompt cache."""
