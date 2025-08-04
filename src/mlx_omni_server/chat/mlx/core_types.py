@@ -27,6 +27,7 @@ class GenerationStats:
     prompt_tps: float = 0.0  # Tokens per second for prompt processing
     generation_tps: float = 0.0  # Tokens per second for generation
     peak_memory: float = 0.0  # Peak memory usage in MB
+    time_to_first_token: float = 0.0  # Time from request start to first token (seconds)
 
 
 @dataclass

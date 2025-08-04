@@ -1,5 +1,6 @@
 """Chat Generator - Core abstraction layer over mlx-lm for chat completions."""
 
+import time
 from typing import Any, Callable, Dict, Generator, List, Optional, Union
 
 from mlx_lm.generate import stream_generate
@@ -356,6 +357,10 @@ class ChatGenerator:
         Yields:
             Streaming generation results
         """
+        # Record start time for first token latency measurement
+        request_start_time = time.perf_counter()
+        first_token_time = None
+
         try:
 
             # Extract json_schema from kwargs for coordination with chat_template
@@ -402,6 +407,10 @@ class ChatGenerator:
 
                 generated_tokens.append(response.token)
 
+                # Record first token time if this is the first token
+                if first_token_time is None:
+                    first_token_time = time.perf_counter() - request_start_time
+
                 # Process logprobs if requested
                 logprobs = None
                 if top_logprobs is not None:
@@ -437,6 +446,7 @@ class ChatGenerator:
                     generation_tps=response.generation_tps,
                     peak_memory=response.peak_memory,
                     cache_hit_tokens=cached_tokens,
+                    time_to_first_token=first_token_time or 0.0,
                 )
 
                 yield GenerationResult(
