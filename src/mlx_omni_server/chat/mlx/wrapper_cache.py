@@ -39,19 +39,32 @@ class MLXWrapperCache:
     to manage memory usage automatically.
     """
 
-    def __init__(self, max_size: int = 3, ttl_seconds: int = 300):
+    def __init__(
+        self, max_size: int = 3, ttl_seconds: int = 300, cleanup_interval: int = 5
+    ):
         """Initialize cache with LRU eviction and TTL support.
 
         Args:
             max_size: Maximum number of models to cache (default: 3)
             ttl_seconds: Time to live in seconds, after which unused models
                         are evicted from cache (default: 300 seconds = 5 minutes)
+            cleanup_interval: Interval in seconds for background cleanup (default: 5 seconds)
         """
         self._cache: OrderedDict[WrapperCacheKey, ChatGenerator] = OrderedDict()
         self._access_times: Dict[WrapperCacheKey, float] = {}
         self._lock = threading.Lock()
         self._max_size = max_size
         self._ttl_seconds = ttl_seconds
+        self._cleanup_interval = cleanup_interval
+        self._stop_event = threading.Event()
+        self._cleanup_thread = None
+
+        # Start background cleanup thread if TTL is enabled
+        if self._ttl_seconds > 0:
+            self._cleanup_thread = threading.Thread(
+                target=self._periodic_cleanup, daemon=True
+            )
+            self._cleanup_thread.start()
 
     def _evict_expired_items(self) -> None:
         """Evict items that have exceeded their TTL.
@@ -102,6 +115,26 @@ class MLXWrapperCache:
         This method should be called while holding the lock.
         """
         self._access_times[key] = time.time()
+
+    def _periodic_cleanup(self) -> None:
+        """Background thread method for periodic cleanup of expired items.
+
+        This method runs in a daemon thread and periodically checks for expired items.
+        """
+        while not self._stop_event.wait(self._cleanup_interval):
+            try:
+                with self._lock:
+                    self._evict_expired_items()
+            except Exception as e:
+                logger.error(f"Error in periodic cleanup: {e}")
+
+    def _stop_cleanup_thread(self) -> None:
+        """Stop the background cleanup thread gracefully."""
+        if self._cleanup_thread is not None:
+            self._stop_event.set()
+            self._cleanup_thread.join(timeout=1.0)
+            self._cleanup_thread = None
+            logger.info("Background cleanup thread stopped")
 
     def get_wrapper(
         self,
@@ -205,6 +238,9 @@ class MLXWrapperCache:
 
         This can be useful for memory management or testing purposes.
         """
+        # Stop the cleanup thread first
+        self._stop_cleanup_thread()
+
         with self._lock:
             cache_size = len(self._cache)
             self._cache.clear()
@@ -268,6 +304,10 @@ class MLXWrapperCache:
             logger.info(
                 f"Updated cache max_size to {max_size}, current size: {len(self._cache)}"
             )
+
+    def __del__(self) -> None:
+        """Destructor to ensure cleanup thread is stopped."""
+        self._stop_cleanup_thread()
 
 
 # Global cache instance - shared across all API endpoints
