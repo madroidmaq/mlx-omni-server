@@ -4,17 +4,15 @@ import random
 import tempfile
 import time
 from pathlib import Path
-from re import S
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from mflux import Config, Flux1, ModelConfig, StopImageGenerationException
 from mflux.callbacks.callback_registry import CallbackRegistry
 from mflux.callbacks.instances.memory_saver import MemorySaver
-from mflux.callbacks.instances.stepwise_handler import StepwiseHandler
 from PIL import Image
 
 from ..utils.logger import logger
-from .schema import ImageGenerationRequest, ImageObject, ImageSize, ResponseFormat
+from .schema import ImageGenerationRequest, ImageObject, ResponseFormat
 
 
 class MFluxImageGenerator:

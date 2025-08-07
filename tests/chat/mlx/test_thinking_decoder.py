@@ -1,0 +1,125 @@
+import logging
+
+import pytest
+
+from mlx_omni_server.chat.mlx.tools.thinking_decoder import ThinkingDecoder
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+class TestThinkingDecoder:
+    """Test functionality of the ThinkingDecoder class"""
+
+    @pytest.fixture
+    def decoder(self):
+        """Create a ThinkingDecoder instance"""
+        decoder = ThinkingDecoder()
+        return decoder
+
+    def test_parse_response_with_empty_thinking(self, decoder):
+        """Test parsing responses with thinking tags"""
+        # Prepare test data
+        test_response = "<think>\n\n</think>\nHere is the final answer."
+
+        # Execute test
+        result = decoder._parse_response(test_response)
+
+        # Verify results
+        assert result["thinking"] == ""
+        assert result["content"] == "Here is the final answer."
+
+    def test_parse_response_with_thinking(self, decoder):
+        """Test parsing responses with thinking tags"""
+        # Prepare test data
+        test_response = "<think>\nThis is a thinking process.\nAnalyzing the request.\n</think>\nHere is the final answer."
+
+        # Execute test
+        result = decoder._parse_response(test_response)
+
+        # Verify results
+        assert (
+            result["thinking"] == "This is a thinking process.\nAnalyzing the request."
+        )
+        assert result["content"] == "Here is the final answer."
+
+    def test_parse_response_without_thinking(self, decoder):
+        """Test parsing responses without thinking tags"""
+        # Prepare test data
+        test_response = "This is a direct response without thinking tags."
+
+        # Execute test
+        result = decoder._parse_response(test_response)
+
+        # Verify results
+        assert result["thinking"] is None
+        assert result["content"] == "This is a direct response without thinking tags."
+
+    def test_decode_with_thinking_enabled(self, decoder):
+        """Test decode method with thinking mode enabled"""
+        # Prepare test data
+        test_text = "<think>Reasoning process</think>Final answer"
+
+        # Execute test
+        result = decoder.decode(test_text)
+
+        # Verify results
+        assert result["thinking"] == "Reasoning process"
+        assert result["content"] == "Final answer"
+
+    def test_parse_stream_response_thinking_mode(self, decoder):
+        """Test stream response parsing in thinking mode with sequential streaming calls"""
+        # Reset state before test
+        decoder.accumulated_text = ""
+
+        # Step 1: Start with thinking tag
+        result = decoder._parse_stream_response(f"<{decoder.thinking_tag}>")
+        assert result["delta_content"] is None
+        assert result["delta_thinking"] == ""
+
+        # Step 2: First part of thinking content
+        result = decoder._parse_stream_response("I'm thinking ")
+        assert result["delta_content"] is None
+        assert result["delta_thinking"] == "I'm thinking "
+
+        # Step 3: Second part of thinking content
+        result = decoder._parse_stream_response("about this problem.")
+        assert result["delta_content"] is None
+        assert result["delta_thinking"] == "about this problem."
+
+        # Step 4: Receive end tag
+        result = decoder._parse_stream_response(f"</{decoder.thinking_tag}>")
+        assert result["delta_content"] == ""
+        assert result["delta_thinking"] is None
+
+        # Step 5: First part of final content
+        result = decoder._parse_stream_response("Here is ")
+        assert result["delta_content"] == "Here is "
+        assert result["delta_thinking"] is None
+
+        # Step 6: Second part of final content
+        result = decoder._parse_stream_response("the answer.")
+        assert result["delta_content"] == "the answer."
+        assert result["delta_thinking"] is None
+
+        # Verify accumulated text has everything
+        expected_text = f"<{decoder.thinking_tag}>I'm thinking about this problem.</{decoder.thinking_tag}>Here is the answer."
+        assert decoder.accumulated_text == expected_text
+
+    def test_parse_response_missing_start_tag(self, decoder):
+        """Test parsing responses with missing start tag but with end tag"""
+        # Prepare test data that mimics the real-world example with missing start tag
+        test_response = """Okay, the user is just greeting me.
+</think>
+
+Hello! How can I assist you today? 😊"""
+
+        # Execute test
+        result = decoder._parse_response(test_response)
+
+        # Verify results
+        expected_thinking = """Okay, the user is just greeting me."""
+        expected_content = "Hello! How can I assist you today? 😊"
+
+        assert result["thinking"] == expected_thinking
+        assert result["content"] == expected_content

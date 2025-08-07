@@ -1,32 +1,57 @@
-from ..text_models import BaseTextModel
-from .mlx_model import MLXModel
-from .model_types import MlxModelCache, ModelId
-
 # Initialize global cache objects
-_model_cache = None
-_mlx_model_cache = None
+# _cached_model: MLXModel = None
+# _cached_adapter: OpenAIAdapter = None
+# _cached_anthropic_adapter: AnthropicMessagesAdapter = None
+
+#
+# def load_openai_adapter(model_key: MLXModel) -> OpenAIAdapter:
+#     """Load the model and return an OpenAIAdapter instance.
+#
+#     Args:
+#         model_key: MLXModel object containing model identification parameters
+#
+#     Returns:
+#         Initialized OpenAIAdapter instance
+#     """
+#     global _cached_model, _cached_adapter
+#
+#     # Check if a new model needs to be loaded
+#     model_needs_reload = _cached_model is None or _cached_model != model_key
+#
+#     if model_needs_reload:
+#         # Cache miss, use the already loaded model
+#         _cached_model = model_key
+#
+#         # Create and cache new OpenAIAdapter instance
+#         _cached_adapter = OpenAIAdapter(model=_cached_model)
+#
+#     # Return cached adapter instance
+#     return _cached_adapter
 
 
-def load_model(model_id: ModelId) -> BaseTextModel:
-    """Load the model and return a BaseTextModel instance.
-
-    Args:
-        model_id: ModelId object containing model identification parameters
-
-    Returns:
-        Initialized BaseTextModel instance
-    """
-    global _model_cache, _mlx_model_cache
-
-    # Check if a new model needs to be loaded
-    model_needs_reload = _model_cache is None or _model_cache.model_id != model_id
-
-    if model_needs_reload:
-        # Cache miss, create a new cache object
-        _model_cache = MlxModelCache(model_id)
-
-        # Create and cache new MLXModel instance
-        _mlx_model_cache = MLXModel(model_cache=_model_cache)
-
-    # Return cached model instance
-    return _mlx_model_cache
+# def load_anthropic_adapter(model_key: MLXModel) -> AnthropicMessagesAdapter:
+#     """Load the model and return an AnthropicMessagesAdapter instance.
+#
+#     Args:
+#         model_key: MLXModel object containing model identification parameters
+#
+#     Returns:
+#         Initialized AnthropicMessagesAdapter instance
+#     """
+#     global _cached_model, _cached_anthropic_adapter
+#
+#     # Check if a new model needs to be loaded
+#     model_needs_reload = _cached_model is None or _cached_model != model_key
+#
+#     if model_needs_reload:
+#         # Cache miss, use the already loaded model
+#         _cached_model = model_key
+#
+#         # Create and cache new AnthropicMessagesAdapter instance
+#         _cached_anthropic_adapter = AnthropicMessagesAdapter(model=_cached_model)
+#     elif _cached_anthropic_adapter is None:
+#         # Model is cached but anthropic adapter is not
+#         _cached_anthropic_adapter = AnthropicMessagesAdapter(model=_cached_model)
+#
+#     # Return cached adapter instance
+#     return _cached_anthropic_adapter
