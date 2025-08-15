@@ -2,24 +2,19 @@ import json
 import uuid
 from typing import List, Optional
 
-from mlx_lm.tokenizer_utils import TokenizerWrapper
+from ..core_types import ToolCall
+from ..core_types import ToolCall as CoreToolCall
+from .base_tools import BaseToolParser
 
-from ...schema import ChatMessage, FunctionCall, Role, ToolCall
-from .chat_tokenizer import ChatTokenizer
 
-
-class MistralChatTokenizer(ChatTokenizer):
+class MistralToolsParser(BaseToolParser):
     """Tools handler for Llama models."""
 
-    def __init__(self, tokenizer: TokenizerWrapper):
-        super().__init__(tokenizer)
+    def __init__(self):
         self.start_tool_calls = "[TOOL_CALLS]"
         self.end_tool_calls = ""
 
-    def decode_stream(self, text: str, delta_text: str) -> Optional[List[ToolCall]]:
-        pass
-
-    def decode(self, text: str) -> Optional[ChatMessage]:
+    def parse_tools(self, text: str) -> Optional[List[ToolCall]]:
         """Parse tool calls from model output.
 
         The model outputs function calls in the format:
@@ -30,7 +25,7 @@ class MistralChatTokenizer(ChatTokenizer):
             text: The model output text containing tool calls
 
         Returns:
-            ChatMessage: A message containing the parsed tool calls
+            List of CoreToolCall objects or None if no tool calls found
         """
         # Look for JSON patterns in the text
         tool_calls = []
@@ -60,41 +55,22 @@ class MistralChatTokenizer(ChatTokenizer):
                         if not isinstance(call, dict) or "name" not in call:
                             continue
 
-                        # Get arguments and ensure they're a JSON string
+                        # Get arguments
                         args = call.get("arguments", call.get("parameters", {}))
-                        if isinstance(args, str):
-                            # Already a JSON string
-                            arguments = args
-                        else:
-                            # Convert dict to JSON string
-                            arguments = json.dumps(args)
 
+                        # Create CoreToolCall object directly
                         tool_calls.append(
-                            ToolCall(
+                            CoreToolCall(
                                 id=f"call_{uuid.uuid4().hex[:8]}",
-                                function=FunctionCall(
-                                    name=call["name"],
-                                    arguments=arguments,
-                                ),
+                                name=call["name"],
+                                arguments=args,
                             )
                         )
                 else:
-                    # Invalid format, return original text
-                    return ChatMessage(
-                        role=Role.ASSISTANT,
-                        content=text,
-                        tool_calls=None,
-                    )
+                    # Invalid format, return None
+                    return None
             except (json.JSONDecodeError, KeyError, ValueError) as e:
                 print(f"Error parsing tool call: {e}")
-                return ChatMessage(
-                    role=Role.ASSISTANT,
-                    content=text,
-                    tool_calls=None,
-                )
+                return None
 
-        return ChatMessage(
-            role=Role.ASSISTANT,
-            content=None if tool_calls else text,
-            tool_calls=tool_calls if tool_calls else None,
-        )
+        return tool_calls if tool_calls else None

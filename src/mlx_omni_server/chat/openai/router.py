@@ -1,13 +1,15 @@
 import json
-from dataclasses import dataclass
 from typing import Generator, Optional
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .mlx.models import ModelId, load_model
-from .schema import ChatCompletionRequest, ChatCompletionResponse
-from .text_models import BaseTextModel
+from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
+from mlx_omni_server.chat.openai.openai_adapter import OpenAIAdapter
+from mlx_omni_server.chat.openai.schema import (
+    ChatCompletionRequest,
+    ChatCompletionResponse,
+)
 
 router = APIRouter(tags=["chat—completions"])
 
@@ -28,7 +30,7 @@ async def create_chat_completion(request: ChatCompletionRequest):
         return JSONResponse(content=completion.model_dump(exclude_none=True))
 
     async def event_generator() -> Generator[str, None, None]:
-        for chunk in text_model.stream_generate(request):
+        for chunk in text_model.generate_stream(request):
             yield f"data: {json.dumps(chunk.model_dump(exclude_none=True))}\n\n"
 
         yield "data: [DONE]\n\n"
@@ -47,14 +49,23 @@ def _create_text_model(
     model_id: str,
     adapter_path: Optional[str] = None,
     draft_model: Optional[str] = None,
-) -> BaseTextModel:
+) -> OpenAIAdapter:
     """Create a text model based on the model parameters.
 
-    Creates a ModelId object and passes it to load_model function.
-    The caching is handled inside the load_model function.
+    Uses the shared wrapper cache to get or create ChatGenerator instance.
+    This avoids expensive model reloading when the same model configuration
+    is used across different requests or API endpoints.
     """
-    current_key = ModelId(
-        name=model_id, adapter_path=adapter_path, draft_model=draft_model
+    # Get cached or create new ChatGenerator
+    wrapper = ChatGenerator.get_or_create(
+        model_id=model_id,
+        adapter_path=adapter_path,
+        draft_model_id=draft_model,
     )
 
-    return load_model(current_key)
+    # Create OpenAIAdapter with the cached wrapper directly
+    return OpenAIAdapter(wrapper=wrapper)
+
+
+# Legacy caching variables removed - now using shared wrapper_cache
+# This eliminates duplicate caching logic and enables sharing between endpoints
