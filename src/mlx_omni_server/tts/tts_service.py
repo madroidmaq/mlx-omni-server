@@ -1,7 +1,8 @@
 from pathlib import Path
 
 from f5_tts_mlx.generate import generate
-from mlx_audio.tts.generate import generate_audio
+
+# from mlx_audio.tts.generate import generate_audio  # Temporarily commented out due to mlx-lm compatibility issue
 from pydantic import BaseModel, Field  # , PrivateAttr
 from typing_extensions import override
 
@@ -30,10 +31,13 @@ class TTSModelAdapter(BaseModel):
 
     @classmethod
     def from_path_or_hf_repo(cls, path_or_hf_repo: str) -> "TTSModelAdapter":
+        # Temporarily only support F5 model due to mlx-audio compatibility issue
         if path_or_hf_repo == "lucasnewman/f5-tts-mlx":
             return F5Model(path_or_hf_repo=path_or_hf_repo)
         else:
-            return MlxAudioModel(path_or_hf_repo=path_or_hf_repo)
+            # For now, default to F5 model instead of MlxAudioModel
+            # TODO: Revert this change when mlx-audio is updated
+            return F5Model(path_or_hf_repo="lucasnewman/f5-tts-mlx")
 
 
 class F5Model(TTSModelAdapter):
@@ -56,27 +60,33 @@ class MlxAudioModel(TTSModelAdapter):
 
     @override
     def generate_audio(self, request: TTSRequest, output_path: str | Path) -> bool:
-        self.path_or_hf_repo = request.model
-        voice = request.voice if hasattr(request, "voice") else "af_sky"
-        lang_code = voice[:1]
-
-        extra_params = request.get_extra_params() or {}
-
-        generate_audio(
-            text=request.input,
-            model_path=self.path_or_hf_repo,
-            voice=voice,
-            speed=request.speed,
-            lang_code=lang_code,
-            file_prefix=str(output_path).rsplit(".", 1)[0],
-            audio_format=request.response_format.value,
-            sample_rate=24000,
-            join_audio=True,
-            verbose=False,
-            **extra_params,
+        # Temporarily disabled due to mlx-audio compatibility issue with latest mlx-lm
+        raise NotImplementedError(
+            "MlxAudioModel is temporarily disabled due to mlx-lm compatibility issues"
         )
 
-        return Path(output_path).exists()
+        # Original implementation:
+        # self.path_or_hf_repo = request.model
+        # voice = request.voice if hasattr(request, "voice") else "af_sky"
+        # lang_code = voice[:1]
+
+        # extra_params = request.get_extra_params() or {}
+
+        # generate_audio(
+        #     text=request.input,
+        #     model_path=self.path_or_hf_repo,
+        #     voice=voice,
+        #     speed=request.speed,
+        #     lang_code=lang_code,
+        #     file_prefix=str(output_path).rsplit(".", 1)[0],
+        #     audio_format=request.response_format.value,
+        #     sample_rate=24000,
+        #     join_audio=True,
+        #     verbose=False,
+        #     **extra_params,
+        # )
+
+        # return Path(output_path).exists()
 
 
 class TTSService:

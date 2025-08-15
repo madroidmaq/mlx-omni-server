@@ -91,7 +91,7 @@ class EmbeddingsService:
             # Handle any other unexpected type
             return [float(x) for x in list(embedding)]
 
-    def _get_bert_embeddings(self, model, processor, text):
+    def _get_bert_embeddings(self, model, processor, text, model_id):
         """Extract embeddings specifically for BERT-like models"""
         # Use proper encode method - processor may have different method names
         encode_method = getattr(processor, "encode", None)
@@ -142,7 +142,9 @@ class EmbeddingsService:
                 # Generate embedding using the model
                 try:
                     # First try the specific BERT extraction method
-                    embedding = self._get_bert_embeddings(model, processor, text)
+                    embedding = self._get_bert_embeddings(
+                        model, processor, text, model_id
+                    )
                 except Exception as e:
                     logger.debug(
                         f"Failed with BERT method: {str(e)}. Trying general generate() function."

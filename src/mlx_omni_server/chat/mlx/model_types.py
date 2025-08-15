@@ -43,8 +43,8 @@ def load_mlx_model(
         )
         logger.info(f"Loaded model: {model_id}")
 
-        # Load configuration and create chat template
-        model_path = get_model_path(model_id)
+        # Load configuration and create chat tokenizer
+        model_path = get_model_path(model_id)[0]
         config = load_config(model_path)
         chat_template = ChatTemplate(config["model_type"], tokenizer)
 

@@ -1,6 +1,6 @@
 [project]
 name = "mlx-omni-server"
-version = "0.4.3"
+version = "0.4.7"
 description = "MLX Omni Server is a server that provides OpenAI-compatible APIs using Apple's MLX framework."
 authors = [{ name = "madroid", email = "madroidmaq@gmail.com" }]
 requires-python = ">=3.11"
@@ -29,15 +29,15 @@ dependencies = [
     "uvicorn>=0.34.0,<0.35",
     "rich>=13.9.4",
     # chat
-    "mlx-lm>=0.24,<0.25",
+    "mlx-lm>=0.26.3",
     "python-multipart>=0.0.20,<0.0.21",
     "sse-starlette>=2.1.3,<3",
-    "outlines>=1.0.3",
+    "outlines==1.0.4",
     # models
     "huggingface-hub>=0.30",
     # audio
     "f5-tts-mlx>=0.2.5,<0.3",
-    "mlx-whisper>=0.4.1,<0.5",
+    "mlx-whisper>=0.4.1",
     "mlx-audio>=0.2.3",
     "numba>=0.57.0",
     # images
@@ -63,7 +63,7 @@ dev = [
     "openai>=1.97.0",
     "anthropic>=0.57.1",
     # for en_core_web_sm models
-    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
+#    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
 ]
 
 [tool.hatch.build.targets.sdist]
