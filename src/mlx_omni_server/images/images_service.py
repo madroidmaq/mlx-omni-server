@@ -6,9 +6,12 @@ import time
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from mflux import Config, Flux1, ModelConfig, StopImageGenerationException
 from mflux.callbacks.callback_registry import CallbackRegistry
 from mflux.callbacks.instances.memory_saver import MemorySaver
+from mflux.config.config import Config
+from mflux.config.model_config import ModelConfig
+from mflux.error.exceptions import StopImageGenerationException
+from mflux.flux.flux import Flux1
 from PIL import Image
 
 from ..utils.logger import logger

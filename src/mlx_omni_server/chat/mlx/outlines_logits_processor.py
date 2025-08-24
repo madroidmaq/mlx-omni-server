@@ -3,7 +3,8 @@ from typing import Any, Dict, Type, Union
 import mlx.core as mx
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 from outlines.models.transformers import TransformerTokenizer
-from outlines.processors.structured import JSONLogitsProcessor, RegexLogitsProcessor
+from outlines.processors import JSONLogitsProcessor
+from outlines.processors.structured import RegexLogitsProcessor
 from outlines.types import JsonSchema
 from outlines_core.fsm.json_schema import build_regex_from_schema
 from pydantic import BaseModel
