@@ -102,14 +102,6 @@ pip install mlx-omni-server
 | `/anthropic/v1/messages` | Messages with tools, streaming, thinking mode | ✅ |
 | `/anthropic/v1/models` | Model listing with pagination | ✅ |
 
-**Core Capabilities:**
-- ✅ Chat completions with streaming
-- ✅ Function calling and tool use
-- ✅ Audio processing (TTS/STT)
-- ✅ Image generation
-- ✅ Text embeddings
-- ✅ Structured output
-- ✅ Extended reasoning (thinking mode)
 
 ## ⚙️ Configuration
 
