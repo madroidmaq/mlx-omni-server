@@ -216,3 +216,42 @@ Built with [MLX](https://github.com/ml-explore/mlx) by Apple • [FastAPI](https
 [![Star History Chart](https://api.star-history.com/svg?repos=madroidmaq/mlx-omni-server&type=Date)](https://star-history.com/#madroidmaq/mlx-omni-server&Date)
 
 </div>
+
+
+
+
+## 🧰 macOS (arm64) wheelhouse via Nix
+
+If you want to install and run MLX Omni Server fully offline on an Apple Silicon Mac, this repo includes a Nix-based workflow to pre-download macOS arm64 wheels.
+
+Prereqs: Nix installed (flakes supported) or nixpkgs channel for non-flake usage.
+
+With flakes:
+
+```bash
+# Open a shell with python3.11, pip, uv
+nix develop
+
+# Build wheelhouse into ./artifacts
+nix run .#wheelhouse
+
+# Copy ./artifacts to your Mac if you built elsewhere, then on the Mac:
+cd artifacts
+bash install_mlx_omni_offline.sh
+mlx-omni-server --host 0.0.0.0 --port 10240
+```
+
+Without flakes:
+
+```bash
+nix-shell
+bash scripts/build_macos_arm64_wheelhouse.sh
+```
+
+Notes:
+- The builder targets platform macosx_12_0_arm64, CPython 3.11 (cp311).
+- If a dependency lacks a prebuilt macOS wheel, the offline step continues and you can complete the install online on macOS:
+  ```bash
+  pip install mlx-omni-server==0.5.1
+  ```
+- MLX uses Metal acceleration and is intended to run natively on macOS. Linux containers may fall back to CPU.

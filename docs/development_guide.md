@@ -75,3 +75,40 @@ The documentation is written in Markdown and stored in the `docs/` directory.
 - Open an issue for bugs or feature requests
 - Join discussions in the GitHub Discussions section
 - Check existing issues and pull requests before creating new ones
+
+
+## Building macOS (arm64) wheelhouse with Nix
+
+To prepare an offline wheelhouse of mlx-omni-server for Apple Silicon Macs using Nix:
+
+With flakes:
+
+```bash
+# Enter a shell with python3.11, pip, uv
+nix develop
+
+# Build the wheelhouse into ./artifacts
+nix run .#wheelhouse
+```
+
+Without flakes:
+
+```bash
+nix-shell
+bash scripts/build_macos_arm64_wheelhouse.sh
+```
+
+On macOS (Apple Silicon):
+
+```bash
+cd artifacts
+bash install_mlx_omni_offline.sh
+mlx-omni-server --host 0.0.0.0 --port 10240
+```
+
+Notes:
+- Targets macosx_12_0_arm64, CPython 3.11 wheels.
+- If some dependencies lack macOS wheels, complete installation online on macOS:
+  ```bash
+  pip install mlx-omni-server==0.5.1
+  ```

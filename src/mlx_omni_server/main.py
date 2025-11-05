@@ -3,6 +3,8 @@ import os
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from importlib.metadata import PackageNotFoundError, version
 
 from .middleware.logging import RequestResponseLoggingMiddleware
 from .routers import api_router
@@ -13,12 +15,24 @@ app = FastAPI(title="MLX Omni Server")
 # Add request/response logging middleware with custom levels
 app.add_middleware(
     RequestResponseLoggingMiddleware,
-    # exclude_paths=["/health"]
+    exclude_paths=["/health"],
 )
 
 from fastapi.middleware.cors import CORSMiddleware
 
 app.include_router(api_router)
+
+
+# Lightweight health endpoint (no heavy imports)
+try:
+    __pkg_version = version("mlx-omni-server")
+except PackageNotFoundError:  # When running from source or during tests
+    __pkg_version = os.environ.get("MLX_OMNI_VERSION", "unknown")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "version": __pkg_version}
 
 
 def build_parser():
