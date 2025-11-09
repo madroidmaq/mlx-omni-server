@@ -2512,7 +2512,7 @@ requires-dist = [
     { name = "mflux", specifier = ">=0.11.0,<0.12" },
     { name = "mlx-audio", specifier = ">=0.2.4" },
     { name = "mlx-embeddings", specifier = ">=0.0.3" },
-    { name = "mlx-lm", specifier = ">=0.28.2" },
+    { name = "mlx-lm", specifier = ">=0.28.2,<0.28.3" },
     { name = "mlx-whisper", specifier = ">=0.4.1" },
     { name = "numba", specifier = ">=0.57.0" },
     { name = "outlines", specifier = "==1.0.4" },
