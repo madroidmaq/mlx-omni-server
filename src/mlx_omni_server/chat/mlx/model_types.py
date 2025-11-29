@@ -60,7 +60,7 @@ def load_mlx_model(
 
                 # Check if vocabulary sizes match
                 if draft_tokenizer.vocab_size != tokenizer.vocab_size:
-                    logger.warn(
+                    logger.warning(
                         f"Draft model({draft_model_id}) tokenizer does not match model tokenizer."
                     )
 

@@ -452,10 +452,16 @@ class ChatGenerator:
                 draft_model=self.model.draft_model,
                 **mlx_kwargs,
             ):
+                generated_tokens.append(response.token)
+
+                # Extend cache with generated tokens if caching is enabled
+                # We have to cache the token immediately because the stream
+                # Could be interrupted by the client
+                if enable_prompt_cache:
+                    self.prompt_cache.append_token(response.token)
+
                 if response.finish_reason is not None:
                     break
-
-                generated_tokens.append(response.token)
 
                 # Record first token time if this is the first token
                 if first_token_time is None:
@@ -506,11 +512,6 @@ class ChatGenerator:
                     logprobs=logprobs,
                     from_draft=response.from_draft,
                 )
-
-            # Extend cache with generated tokens if caching is enabled
-            if enable_prompt_cache and generated_tokens:
-                self.prompt_cache.extend_completion_cache(generated_tokens)
-
         except Exception as e:
-            logger.error(f"Error during stream generation: {e}")
+            logger.exception(f"Error during stream generation: {e}")
             raise RuntimeError(f"Stream generation failed: {e}")
