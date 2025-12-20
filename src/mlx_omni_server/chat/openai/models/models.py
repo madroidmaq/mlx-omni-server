@@ -4,7 +4,17 @@ from .models_service import ModelsService
 from .schema import Model, ModelDeletion, ModelList
 
 router = APIRouter(tags=["models"])
-models_service = ModelsService()
+
+# Lazy initialization to avoid scanning cache during module import
+_models_service = None
+
+
+def get_models_service() -> ModelsService:
+    """Get or create the models service singleton with lazy initialization."""
+    global _models_service
+    if _models_service is None:
+        _models_service = ModelsService()
+    return _models_service
 
 
 def extract_model_id_from_path(request: Request) -> str:
@@ -26,14 +36,14 @@ def handle_model_error(e: Exception) -> None:
 @router.get("/v1/models", response_model=ModelList)
 async def list_models(include_details: bool = False) -> ModelList:
     """List all available models"""
-    return models_service.list_models(include_details)
+    return get_models_service().list_models(include_details)
 
 
 @router.get("/models/{model_id:path}", response_model=Model)
 @router.get("/v1/models/{model_id:path}", response_model=Model)
 async def get_model(model_id: str, include_details: bool = False) -> Model:
     """Get information about a specific model"""
-    model = models_service.get_model(model_id, include_details)
+    model = get_models_service().get_model(model_id, include_details)
     if not model:
         raise HTTPException(status_code=404, detail="Model not found")
     return model
@@ -47,6 +57,6 @@ async def delete_model(request: Request) -> ModelDeletion:
     """
     try:
         model_id = extract_model_id_from_path(request)
-        return models_service.delete_model(model_id)
+        return get_models_service().delete_model(model_id)
     except Exception as e:
         handle_model_error(e)

@@ -52,8 +52,11 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
     FORMAT = "%(message)s"
 
     # Configure the root logger
+    # Attach the Rich handler to the root logger via basicConfig. Use NOTSET
+    # so we can control the effective level later (via set_logger_level).
+    # Use the integer constant instead of a string to avoid accidental misuse.
     logging.basicConfig(
-        level="NOTSET",
+        level=logging.NOTSET,
         format=FORMAT,
         handlers=[rich_handler],
     )
@@ -66,8 +69,33 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
 
 
 def set_logger_level(logger: logging.Logger, level: str):
-    log_level = logging.getLevelNamesMapping().get(level.upper())
+    """Set logging level for the given logger and ensure it applies globally.
+
+    We set the level on the provided logger, on the root logger, and on all
+    existing handlers. This ensures messages from other modules (uvicorn,
+    FastAPI, etc.) respect the requested level.
+    """
+    # Resolve textual level to numeric value, default to INFO if unknown
+    log_level = logging.getLevelNamesMapping().get(level.upper(), logging.INFO)
+
+    if level.upper() not in logging.getLevelNamesMapping():
+        logger.warning(f"Invalid log level '{level}', defaulting to INFO")
+
+    # Set level on the provided logger
     logger.setLevel(log_level)
+
+    # Also set the root logger level so that other loggers inherit it when
+    # they have NOTSET level themselves.
+    logging.root.setLevel(log_level)
+
+    # Ensure all existing handlers respect the new level (RichHandler, etc.)
+    for handler in logging.root.handlers:
+        try:
+            handler.setLevel(log_level)
+        except (AttributeError, TypeError):
+            # If a handler doesn't support setLevel or is of an unexpected
+            # type, skip it.
+            pass
 
 
 # Default logger

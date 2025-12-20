@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Tuple, Type
 
 from huggingface_hub import CachedRepoInfo, scan_cache_dir
 
+from ....utils.logger import logger
 from .schema import Model, ModelDeletion, ModelList
 
 MODEL_REMAPPING = {
@@ -53,10 +54,10 @@ class ModelCacheScanner:
             return arch.Model, arch.ModelArgs
 
         except ImportError:
-            logging.debug(f"Model type {model_type} not supported by mlx-lm")
+            logger.debug(f"Model type {model_type} not supported by mlx-lm")
             return None
         except Exception as e:
-            logging.warning(f"Error checking model compatibility: {str(e)}")
+            logger.warning(f"Error checking model compatibility: {str(e)}")
             return None
 
     def is_model_supported(self, config_data: Dict) -> bool:
@@ -91,7 +92,7 @@ class ModelCacheScanner:
                 if self.is_model_supported(config_data):
                     supported_models.append((repo_info, config_data))
             except Exception as e:
-                logging.error(
+                logger.error(
                     f"Error reading config.json for {repo_info.repo_id}: {str(e)}"
                 )
 
@@ -117,11 +118,11 @@ class ModelCacheScanner:
                     if self.is_model_supported(config_data):
                         return (repo_info, config_data)
                     else:
-                        logging.warning(
+                        logger.warning(
                             f"Model {model_id} found but not compatible with mlx-lm"
                         )
                 except Exception as e:
-                    logging.error(
+                    logger.error(
                         f"Error reading config.json for {repo_info.repo_id}: {str(e)}"
                     )
 
@@ -136,15 +137,15 @@ class ModelCacheScanner:
 
                 try:
                     delete_strategy = self.cache_info.delete_revisions(*revision_hashes)
-                    logging.info(
+                    logger.info(
                         f"Model '{model_id}': Will free {delete_strategy.expected_freed_size_str}"
                     )
                     delete_strategy.execute()
-                    logging.info(f"Model '{model_id}': Cache deletion completed")
+                    logger.info(f"Model '{model_id}': Cache deletion completed")
                     self._refresh_cache_info()
                     return True
                 except Exception as e:
-                    logging.error(f"Error deleting model '{model_id}': {str(e)}")
+                    logger.error(f"Error deleting model '{model_id}': {str(e)}")
                     raise
 
         return False

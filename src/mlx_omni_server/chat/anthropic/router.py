@@ -14,7 +14,17 @@ from .models_service import AnthropicModelsService
 from .schema import AnthropicModelList
 
 router = APIRouter(tags=["anthropic"])
-models_service = AnthropicModelsService()
+
+# Lazy initialization to avoid scanning cache during module import
+_models_service = None
+
+
+def get_models_service() -> AnthropicModelsService:
+    """Get or create the anthropic models service singleton with lazy initialization."""
+    global _models_service
+    if _models_service is None:
+        _models_service = AnthropicModelsService()
+    return _models_service
 
 # Legacy caching variables removed - now using shared wrapper_cache
 # This eliminates duplicate caching logic and enables sharing between endpoints
@@ -42,7 +52,7 @@ async def list_anthropic_models(
     ),
 ) -> AnthropicModelList:
     """List available models in Anthropic format."""
-    return models_service.list_models(
+    return get_models_service().list_models(
         limit=limit, after_id=after_id, before_id=before_id
     )
 
