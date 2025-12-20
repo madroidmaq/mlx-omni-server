@@ -8,9 +8,8 @@ from typing import Dict, List, Tuple
 
 from mflux.callbacks.callback_registry import CallbackRegistry
 from mflux.callbacks.instances.memory_saver import MemorySaver
-from mflux.config.config import Config
-from mflux.config.model_config import ModelConfig
-from mflux.error.exceptions import StopImageGenerationException
+from mflux.models.common.config.model_config import ModelConfig
+from mflux.utils.exceptions import StopImageGenerationException
 from mflux.models.flux.variants.txt2img.flux import Flux1
 from PIL import Image
 
@@ -68,7 +67,7 @@ class MFluxImageGenerator:
                     model_name=model_name, base_model=base_model
                 ),
                 quantize=params.get("quantize"),
-                local_path=params.get("local_path"),
+                model_path=params.get("model_path"),
                 lora_paths=params.get("lora-paths") if params else None,
                 lora_scales=params.get("lora-scales") if params else None,
             )
@@ -111,21 +110,17 @@ class MFluxImageGenerator:
         memory_saver = None
         if low_memory_mode:
             memory_saver = MemorySaver(model=flux, keep_transformer=seed > 1)
-            CallbackRegistry.register_before_loop(memory_saver)
-            CallbackRegistry.register_in_loop(memory_saver)
-            CallbackRegistry.register_after_loop(memory_saver)
+            CallbackRegistry().register(memory_saver)
 
         try:
             # Generate image
             image = flux.generate_image(
                 seed=seed,
                 prompt=request.prompt,
-                config=Config(
-                    num_inference_steps=all_extra_params.pop("steps", 4),
-                    height=height,
-                    width=width,
-                    guidance=all_extra_params.pop("guidance", 4.0),
-                ),
+                num_inference_steps=all_extra_params.pop("steps", 4),
+                height=height,
+                width=width,
+                guidance=all_extra_params.pop("guidance", 4.0),
             )
 
             # Save image
