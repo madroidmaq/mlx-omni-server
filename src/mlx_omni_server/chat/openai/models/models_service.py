@@ -1,4 +1,5 @@
 import importlib
+import importlib.util
 import json
 import logging
 from typing import Dict, List, Optional, Tuple, Type
@@ -35,7 +36,9 @@ class ModelCacheScanner:
     def _get_model_classes(self, config: dict) -> Optional[Tuple[Type, Type]]:
         """
         Try to retrieve the model and model args classes based on the configuration.
-        https://github.com/ml-explore/mlx-examples/blob/1e0766018494c46bc6078769278b8e2a360503dc/llms/mlx_lm/utils.py#L81
+        Reference:
+            mlx_lm: https://github.com/ml-explore/mlx-examples/blob/1e0766018494c46bc6078769278b8e2a360503dc/llms/mlx_lm/utils.py#L81
+            mlx_embeddings: https://github.com/Blaizzy/mlx-embeddings/blob/580b2d62fa602c543d81c80fb715057dd8940371/mlx_embeddings/utils.py#L36
 
         Args:
             config (dict): The model configuration
@@ -49,12 +52,26 @@ class ModelCacheScanner:
             if not model_type:
                 return None
 
-            # Try to import the model architecture module
-            arch = importlib.import_module(f"mlx_lm.models.{model_type}")
-            return arch.Model, arch.ModelArgs
+            # Try to import the model architecture module from mlx_lm
+            module_name = f"mlx_lm.models.{model_type}"
+            if importlib.util.find_spec(module_name) is not None:
+                arch = importlib.import_module(module_name)
+                return arch.Model, arch.ModelArgs
+
+            # If not found in mlx_lm, try mlx_embeddings
+            module_name = f"mlx_embeddings.models.{model_type}"
+            if importlib.util.find_spec(module_name) is not None:
+                arch = importlib.import_module(module_name)
+                return arch.Model, arch.ModelArgs
+
+            raise ImportError(
+                f"Model type {model_type} not found in mlx-lm or mlx_embeddings"
+            )
 
         except ImportError:
-            logger.debug(f"Model type {model_type} not supported by mlx-lm")
+            logger.debug(
+                f"Model type {model_type} not supported by mlx-lm or mlx_embeddings"
+            )
             return None
         except Exception as e:
             logger.warning(f"Error checking model compatibility: {str(e)}")
