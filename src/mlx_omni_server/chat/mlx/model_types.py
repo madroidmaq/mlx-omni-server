@@ -35,13 +35,14 @@ def get_model_path(model_id: str) -> Path:
     """Get model path, supporting both local paths and HuggingFace repo IDs.
 
     Args:
-        model_id: Either a local filesystem path or a HuggingFace model ID
+        model_id: Either a local filesystem path (absolute, relative, or with ~)
+                  or a HuggingFace model ID
 
     Returns:
         Path to the model directory
     """
-    # Check if it's a local path first
-    local_path = Path(model_id)
+    # Check if it's a local path first (expand ~ for home directory)
+    local_path = Path(model_id).expanduser()
     if local_path.exists() and local_path.is_dir():
         # Verify it looks like a model directory (has config.json)
         if (local_path / "config.json").exists():
