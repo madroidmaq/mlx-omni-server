@@ -10,18 +10,18 @@ from mlx_lm.utils import load, load_config
 # Handle mlx_lm version compatibility: newer versions use hf_repo_to_path (returns Path),
 # older versions (< 0.29) use get_model_path (returns Tuple[Path, Optional[str]])
 try:
-    from mlx_lm.utils import hf_repo_to_path as _get_model_path
+    from mlx_lm.utils import hf_repo_to_path as _hf_get_model_path
 
-    def get_model_path(model_id: str) -> Path:
-        """Get model path (wrapper for newer mlx_lm versions)."""
-        return _get_model_path(model_id)
+    def _get_hf_model_path(model_id: str) -> Path:
+        """Get model path from HuggingFace (wrapper for newer mlx_lm versions)."""
+        return _hf_get_model_path(model_id)
 
 except ImportError:
-    from mlx_lm.utils import get_model_path as _get_model_path
+    from mlx_lm.utils import get_model_path as _old_get_model_path
 
-    def get_model_path(model_id: str) -> Path:
-        """Get model path (wrapper for older mlx_lm versions)."""
-        result = _get_model_path(model_id)
+    def _get_hf_model_path(model_id: str) -> Path:
+        """Get model path from HuggingFace (wrapper for older mlx_lm versions)."""
+        result = _old_get_model_path(model_id)
         # Old version returns Tuple[Path, Optional[str]], extract just the Path
         if isinstance(result, tuple):
             return result[0]
@@ -29,6 +29,26 @@ except ImportError:
             return result
         else:
             raise TypeError(f"Unexpected return type from get_model_path: {type(result)}")
+
+
+def get_model_path(model_id: str) -> Path:
+    """Get model path, supporting both local paths and HuggingFace repo IDs.
+
+    Args:
+        model_id: Either a local filesystem path or a HuggingFace model ID
+
+    Returns:
+        Path to the model directory
+    """
+    # Check if it's a local path first
+    local_path = Path(model_id)
+    if local_path.exists() and local_path.is_dir():
+        # Verify it looks like a model directory (has config.json)
+        if (local_path / "config.json").exists():
+            return local_path
+
+    # Otherwise, treat as HuggingFace repo ID
+    return _get_hf_model_path(model_id)
 
 from ...utils.logger import logger
 from .tools.chat_template import ChatTemplate
