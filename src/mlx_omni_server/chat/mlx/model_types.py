@@ -79,6 +79,11 @@ def load_mlx_model(
 
     model_id = model_id.strip()
 
+    # Expand ~ for local paths before passing to load()
+    local_path = Path(model_id).expanduser()
+    if local_path.exists() and local_path.is_dir():
+        model_id = str(local_path)
+
     try:
         # Load the main model
         model, tokenizer = load(
@@ -97,6 +102,10 @@ def load_mlx_model(
         draft_model = None
         draft_tokenizer = None
         if draft_model_id:
+            # Expand ~ for local draft model paths
+            draft_local = Path(draft_model_id).expanduser()
+            if draft_local.exists() and draft_local.is_dir():
+                draft_model_id = str(draft_local)
             try:
                 draft_model, draft_tokenizer = load(
                     draft_model_id,
