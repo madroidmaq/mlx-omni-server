@@ -117,7 +117,9 @@ def extract_tools(text: str) -> Optional[List[ToolCall]]:
     results: List[ToolCall] = []
 
     # Prefer explicit <tool_call>...</tool_call> blocks (HuggingFace unified tool-use).
+    saw_tool_call_block = False
     for m in _TOOL_CALL_BLOCK_RE.finditer(text):
+        saw_tool_call_block = True
         raw = (m.group(1) or "").strip()
         tool_json = _extract_balanced_json_object(raw) or raw
         tool_call = _parse_tool_json_object(tool_json)
@@ -126,6 +128,12 @@ def extract_tools(text: str) -> Optional[List[ToolCall]]:
 
     if results:
         return results
+
+    # If the model attempted a <tool_call> but we couldn't parse it, do NOT fall back
+    # to shallow regex parsing (it can produce empty args {} and trigger tool-error loops).
+    if saw_tool_call_block:
+        logger.warning("Detected <tool_call> block(s) but failed to parse; returning no tool calls")
+        return None
 
     # Fallback: legacy regex-based extraction for non-tagged formats.
     # NOTE: this can fail on deeply nested braces; keep it as a best-effort path.
