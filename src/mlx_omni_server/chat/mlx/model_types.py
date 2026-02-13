@@ -9,11 +9,18 @@ from mlx_lm.utils import load, load_config
 
 # Handle mlx_lm version compatibility: newer versions use hf_repo_to_path (returns Path),
 # older versions (< 0.29) use get_model_path (returns Tuple[Path, Optional[str]])
+#
+# Additionally: our deployments often pass a local filesystem path as model_id.
+# Newer huggingface_hub validators reject absolute paths as "repo ids"; treat real
+# local paths as paths and bypass hf_repo_to_path/get_model_path.
 try:
     from mlx_lm.utils import hf_repo_to_path as _get_model_path
 
     def get_model_path(model_id: str) -> Path:
         """Get model path (wrapper for newer mlx_lm versions)."""
+        p = Path(model_id)
+        if p.is_absolute() and p.exists():
+            return p
         return _get_model_path(model_id)
 
 except ImportError:
@@ -21,6 +28,9 @@ except ImportError:
 
     def get_model_path(model_id: str) -> Path:
         """Get model path (wrapper for older mlx_lm versions)."""
+        p = Path(model_id)
+        if p.is_absolute() and p.exists():
+            return p
         result = _get_model_path(model_id)
         # Old version returns Tuple[Path, Optional[str]], extract just the Path
         if isinstance(result, tuple):
