@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from ....utils.logger import logger
 from ..core_types import ToolCall
-from .base_tools import BaseToolParser
+from .base_tools import BaseToolParser, extract_tools
 
 
 class Qwen3MoeToolParser(BaseToolParser):
@@ -133,9 +133,16 @@ class Qwen3MoeToolParser(BaseToolParser):
                 logger.debug("parse_tools: text doesn't match strict format")
                 return None
 
+            # First: prefer <tool_call>{"name":...,"arguments":...}</tool_call> JSON blocks.
+            # Qwen3 models frequently emit the HuggingFace unified format, not <function=...> tags.
+            parsed = extract_tools(text)
+            if parsed:
+                logger.debug(f"parse_tools: extracted {len(parsed)} tool call(s) via base_tools.extract_tools")
+                return parsed
+
             tool_calls: List[ToolCall] = []
 
-            # Pattern to match function name and parameters in XML format
+            # Fallback: match <function=name>...</function> style tool calls
             # Handles both <tool_call><function=name>...</function></tool_call>
             # and malformed <function=name>...</function></tool_call>
             pattern = r"<function=([^>]+)>(.*?)(?:</function>|</tool_call>)"
