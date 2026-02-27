@@ -25,7 +25,7 @@ class TestChatGenerator:
         """Test basic initialization."""
         assert mlx_wrapper.tokenizer is not None
         assert mlx_wrapper.chat_template is not None
-        assert mlx_wrapper._prompt_cache is None
+        assert mlx_wrapper._prompt_cache_pool is None
 
     def test_basic_generate(self, mlx_wrapper):
         """Test basic text generation."""
