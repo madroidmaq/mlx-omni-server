@@ -152,7 +152,12 @@ class OpenAIAdapter:
                 "role": (msg.role.value if hasattr(msg.role, "value") else str(msg.role)),
                 "content": msg.content,
                 **({"name": msg.name} if msg.name else {}),
-                **({"tool_calls": msg.tool_calls} if msg.tool_calls else {}),
+                **({"tool_calls": [
+                    tc.model_dump(mode="json", exclude_none=True) 
+                    if hasattr(tc, "model_dump") else tc 
+                    for tc in msg.tool_calls
+                ]} if msg.tool_calls else {}),
+                **({"tool_call_id": msg.tool_call_id} if msg.tool_call_id else {}),
             }
             for msg in request.messages
         ]
@@ -161,12 +166,13 @@ class OpenAIAdapter:
         tools = None
         if request.tools:
             tools = [
-                tool.model_dump() if hasattr(tool, "model_dump") else dict(tool)
+                tool.model_dump(mode='json') if hasattr(tool, "model_dump") else dict(tool)
                 for tool in request.tools
             ]
 
         logger.info(f"messages: {messages}")
         logger.info(f"template_kwargs: {template_kwargs}")
+        logger.info(f"tools: {tools}")
 
         json_schema = None
         if request.response_format and request.response_format.json_schema:
