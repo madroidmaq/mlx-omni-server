@@ -14,6 +14,9 @@ try:
 
     def get_model_path(model_id: str) -> Path:
         """Get model path (wrapper for newer mlx_lm versions)."""
+        local = Path(model_id)
+        if local.exists():
+            return local  
         return _get_model_path(model_id)
 
 except ImportError:
