@@ -311,3 +311,55 @@ class TestChatGenerator:
         assert isinstance(result, GenerationResult)
         assert isinstance(result.content, CompletionContent)
         assert len(result.content.text) > 0
+
+    def test_concurrent_cached_requests(self, mlx_wrapper):
+        """Test two sequential cached requests share the pool without conflict.
+
+        In the real server, Uvicorn's async event loop serializes model
+        inference (sync generate_step blocks the loop). Concurrent requests
+        interleave at yield points, not in parallel. This test simulates
+        that: two requests run sequentially on the same ChatGenerator,
+        each using the prompt cache pool. We verify both complete correctly
+        and the pool accumulates independent cache entries.
+        """
+        messages_a = [{"role": "user", "content": "What is 2 + 2?"}]
+        messages_b = [{"role": "user", "content": "What is the capital of France?"}]
+
+        # Request A: populates the cache pool
+        result_a = mlx_wrapper.generate(
+            messages=messages_a, max_tokens=20, enable_prompt_cache=True
+        )
+
+        assert isinstance(result_a, GenerationResult)
+        assert isinstance(result_a.content, CompletionContent)
+        assert len(result_a.content.text) > 0
+
+        pool_info = mlx_wrapper.prompt_cache_pool.get_pool_info()
+        assert pool_info["pool_size"] >= 1
+
+        # Request B: different prompt, same model — should get its own cache
+        result_b = mlx_wrapper.generate(
+            messages=messages_b, max_tokens=20, enable_prompt_cache=True
+        )
+
+        assert isinstance(result_b, GenerationResult)
+        assert isinstance(result_b.content, CompletionContent)
+        assert len(result_b.content.text) > 0
+
+        # Pool should have entries from both requests
+        pool_info = mlx_wrapper.prompt_cache_pool.get_pool_info()
+        assert pool_info["pool_size"] >= 2
+
+        # Request A again (multi-turn): should reuse prefix from first request
+        messages_a_turn2 = messages_a + [
+            {"role": "assistant", "content": result_a.content.text},
+            {"role": "user", "content": "Are you sure?"},
+        ]
+        result_a2 = mlx_wrapper.generate(
+            messages=messages_a_turn2, max_tokens=20, enable_prompt_cache=True
+        )
+
+        assert isinstance(result_a2, GenerationResult)
+        assert len(result_a2.content.text) > 0
+        # Should have cache hits from the prefix of the first request
+        assert result_a2.stats.cache_hit_tokens > 0
