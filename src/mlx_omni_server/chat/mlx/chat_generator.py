@@ -428,8 +428,8 @@ class ChatGenerator:
             cached_tokens = 0
 
             if enable_prompt_cache:
-                # Checkout an exclusive cache from the pool
-                prompt_cache = self.prompt_cache_pool.checkout(
+                # Get an cache copy from the pool
+                prompt_cache = self.prompt_cache_pool.get_cache(
                     tokenized_prompt, self.model.model_id
                 )
                 processed_prompt, cached_tokens = prompt_cache.get_prompt_cache(
@@ -522,4 +522,4 @@ class ChatGenerator:
         finally:
             # Always return cache to pool, even on error or client disconnect
             if prompt_cache is not None:
-                self.prompt_cache_pool.checkin(prompt_cache)
+                self.prompt_cache_pool.put_cache(prompt_cache)
