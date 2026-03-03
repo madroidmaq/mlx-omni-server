@@ -1,16 +1,12 @@
 """
-Prompt Cache Pool - Thread-safe pool of PromptCache instances.
+Prompt Cache Pool Module
 
-Provides exclusive checkout/checkin semantics so that concurrent requests
-sharing the same ChatGenerator can each get their own PromptCache without
-data races, while still benefiting from prefix-matching reuse across
-multi-turn conversations.
+This module provides functionality for managing PromptCache instances, avoiding concurrency issues.
 """
 
-import threading
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
 import copy
 
 from ...utils.logger import logger
@@ -26,8 +22,8 @@ class PoolEntry:
 
 class PromptCachePool:
     """
-
-    """ #TODO
+    Prompt cache pool class for managing PromptCache instances using LRU policy. 
+    """
 
     def __init__(self, max_size: int = 8, ttl_seconds: float = 300.0):
         self._entries: List[PoolEntry] = []
@@ -39,7 +35,7 @@ class PromptCachePool:
 
         Finds the best matching available cache by common prefix length.
         If no suitable cache exists, creates a new one (evicting the oldest
-        idle entry if at capacity). 
+        entry if at capacity). 
 
         Args:
             prompt_tokens: The tokenized prompt for this request.
@@ -73,7 +69,7 @@ class PromptCachePool:
         # No suitable match — create new entry
         if len(self._entries) >= self._max_size:
             # First evict if at capacity
-            self._evict_oldest_idle()
+            self._evict_oldest()
 
         new_entry = PoolEntry(
             cache=PromptCache(),
@@ -100,10 +96,10 @@ class PromptCachePool:
         )
 
         if len(self._entries) > self._max_size:
-            self._evict_oldest_idle()
+            self._evict_oldest()
 
     def _evict_expired(self) -> None:
-        """Remove idle entries that have exceeded TTL. Must hold lock."""
+        """Remove entries that have exceeded TTL. """
         if self._ttl_seconds <= 0:
             return
         now = time.time()
@@ -117,8 +113,8 @@ class PromptCachePool:
         if evicted > 0:
             logger.debug(f"Pool evicted {evicted} expired cache(s)")
 
-    def _evict_oldest_idle(self) -> None:
-        """Remove the oldest idle (not in_use) entry. Must hold lock."""
+    def _evict_oldest(self) -> None:
+        """Remove the oldest entry. """
         oldest_idx = None
         oldest_time = float("inf")
         for i, entry in enumerate(self._entries):
@@ -128,7 +124,7 @@ class PromptCachePool:
         if oldest_idx is not None:
             removed = self._entries.pop(oldest_idx)
             logger.debug(
-                f"Pool evicted idle cache (tokens: {len(removed.cache.tokens)})"
+                f"Pool evicted cache (tokens: {len(removed.cache.tokens)})"
             )
 
     def get_pool_info(self) -> dict:
