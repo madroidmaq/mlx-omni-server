@@ -512,14 +512,13 @@ class ChatGenerator:
                     from_draft=response.from_draft,
                 )
 
-            # Extend cache with generated tokens if caching is enabled
-            if enable_prompt_cache and prompt_cache is not None and generated_tokens:
-                prompt_cache.extend_completion_cache(generated_tokens)
+            # Return cache to pool only on clean completion so that a misaligned
+            # tokens/KV-cache pair from a partial generation is never reused.
+            if enable_prompt_cache and prompt_cache is not None:
+                if generated_tokens:
+                    prompt_cache.extend_completion_cache(generated_tokens)
+                self.prompt_cache_pool.put_cache(prompt_cache)
 
         except Exception as e:
             logger.error(f"Error during stream generation: {e}")
             raise RuntimeError(f"Stream generation failed: {e}")
-        finally:
-            # Always return cache to pool, even on error or client disconnect
-            if prompt_cache is not None:
-                self.prompt_cache_pool.put_cache(prompt_cache)
