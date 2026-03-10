@@ -63,6 +63,21 @@ This JSON represents a function call to `get_current_weather` with the location 
         self.assertEqual(tools[0].arguments["path"], "w/test.file")
         self.assertEqual(tools[0].arguments["meta"]["a"]["b"]["c"]["d"], 1)
 
+    def test_decode_arguments_null(self):
+        # "arguments": null should be treated as empty args, not a parse failure
+        text = '<tool_call>\n{"name": "list_files", "arguments": null}\n</tool_call>'
+        tools = extract_tools(text)
+        self.assertIsNotNone(tools)
+        self.assertEqual(len(tools), 1)
+        self.assertEqual(tools[0].name, "list_files")
+        self.assertEqual(tools[0].arguments, {})
+
+    def test_malformed_tool_call_block_returns_none(self):
+        # Malformed <tool_call> block should return None, not fall back to regex
+        text = '<tool_call>\n{not valid json at all\n</tool_call>'
+        tools = extract_tools(text)
+        self.assertIsNone(tools)
+
     def test_decode_no_tool_calls(self):
         # Test when no tool calls are found
         text = "This is a regular message without any tool calls"

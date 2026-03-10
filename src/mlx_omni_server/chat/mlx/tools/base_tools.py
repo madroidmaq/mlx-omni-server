@@ -52,12 +52,12 @@ def _looks_like_nonempty_args_expected(tool_json_raw: str) -> bool:
     Used to avoid returning ToolCall(..., arguments={}) when we actually failed to parse.
     """
     if '"arguments"' in tool_json_raw:
-        # If explicitly empty, allow
-        if re.search(r'"arguments"\s*:\s*\{\s*\}', tool_json_raw):
+        # If explicitly empty or null, allow
+        if re.search(r'"arguments"\s*:\s*(\{\s*\}|null\b)', tool_json_raw):
             return False
         return True
     if '"parameters"' in tool_json_raw:
-        if re.search(r'"parameters"\s*:\s*\{\s*\}', tool_json_raw):
+        if re.search(r'"parameters"\s*:\s*(\{\s*\}|null\b)', tool_json_raw):
             return False
         return True
     return False
