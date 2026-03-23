@@ -215,7 +215,9 @@ class ChatTemplate(ABC):
                 self.reason_decoder = ThinkingDecoder(init_buffer=THINK_TAG)
 
         elif enable_thinking_parse is False:
-            # No modification to prompt
+            # Ensure <think> is stripped if the tokenizer added it anyway
+            if stripped_prompt.endswith(THINK_TAG):
+                prompt = stripped_prompt[: -len(THINK_TAG)]
             self.reason_decoder = None
 
         # enable_thinking_parse is None: no modification, no decoder setup
