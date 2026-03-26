@@ -85,7 +85,7 @@ class ChatTemplate(ABC):
         schema_tools = tools  # tools are already in dict format
 
         # Check if the last message is from assistant (for prefill)
-        should_prefill = messages[-1].get("role") == "assistant"
+        should_prefill = bool(messages) and messages[-1].get("role") == "assistant"
 
         conversation = []
         for message in messages:
