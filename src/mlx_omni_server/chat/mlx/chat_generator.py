@@ -39,7 +39,7 @@ class ChatGenerator:
         self.model = model
         self.tokenizer = model.tokenizer
         self.chat_template = model.chat_template
-        self._prompt_cache_pool = None
+        self._prompt_cache = None
         self._logprobs_processor = None
 
     @classmethod
@@ -137,13 +137,13 @@ class ChatGenerator:
         )
 
     @property
-    def prompt_cache_pool(self):
-        """Lazy initialization of prompt cache pool."""
-        if self._prompt_cache_pool is None:
-            from .prompt_cache_pool import PromptCachePool
+    def prompt_cache(self):
+        """Lazy initialization of prompt cache."""
+        if self._prompt_cache is None:
+            from .prompt_cache import PromptCache
 
-            self._prompt_cache_pool = PromptCachePool()
-        return self._prompt_cache_pool
+            self._prompt_cache = PromptCache()
+        return self._prompt_cache
 
     @property
     def logprobs_processor(self):
@@ -313,8 +313,63 @@ class ChatGenerator:
             Complete generation result
         """
         try:
+            # Check if we need to use mlx_vlm for VLM-only models
+            if getattr(self.model, 'is_vlm_model', False):
+                from mlx_vlm import generate as vlm_generate
+                
+                # For VLM models, use mlx_vlm's generate directly
+                prompt = self._prepare_prompt(messages, tools, template_kwargs, kwargs.get("json_schema"))
+                
+                mlx_kwargs = self._create_mlx_kwargs(
+                    sampler=sampler,
+                    max_tokens=max_tokens,
+                    **kwargs,
+                )
+                
+                result = vlm_generate(
+                    model=self.model.model.model,  # Unwrap VLM model
+                    processor=self.model.model.processor,
+                    prompt=prompt,
+                    **mlx_kwargs,
+                )
+                
+                # Extract text from result
+                complete_raw_text = result.text if hasattr(result, 'text') else str(result)
+                
+                # Create stats similar to stream results
+                stats = GenerationStats(
+                    prompt_tokens=result.prompt_tokens,
+                    completion_tokens=result.generation_tokens,
+                    prompt_tps=result.prompt_tps if hasattr(result, 'prompt_tps') else 0.0,
+                    generation_tps=result.generation_tps if hasattr(result, 'generation_tps') else 0.0,
+                    peak_memory=result.peak_memory if hasattr(result, 'peak_memory') else 0.0,
+                    cache_hit_tokens=0,
+                    time_to_first_token=0.0,
+                )
+                
+                # Parse the response
+                chat_result = self.chat_template.parse_chat_response(complete_raw_text)
+                
+                # Create CompletionContent
+                content = CompletionContent(
+                    text=chat_result.content,
+                    reasoning=chat_result.thinking,
+                    tool_calls=chat_result.tool_calls,
+                    text_tokens=None,
+                    reasoning_tokens=None,
+                )
+                
+                # Return result
+                return GenerationResult(
+                    content=content,
+                    finish_reason="stop",
+                    stats=stats,
+                    logprobs=None,
+                    from_draft=False,
+                )
+            
+            # Standard generation for non-VLM models
             # Generate complete response by collecting stream.
-            # stream_generate handles the preparation of configurations.
             complete_raw_text = ""
             final_stream_result = None
             all_text_tokens = []
@@ -410,7 +465,6 @@ class ChatGenerator:
         # Record start time for first token latency measurement
         request_start_time = time.perf_counter()
         first_token_time = None
-        prompt_cache = None  # Local exclusive cache for this request
 
         try:
 
@@ -428,11 +482,7 @@ class ChatGenerator:
             cached_tokens = 0
 
             if enable_prompt_cache:
-                # Get an cache copy from the pool
-                prompt_cache = self.prompt_cache_pool.get_cache(
-                    tokenized_prompt, self.model.model_id
-                )
-                processed_prompt, cached_tokens = prompt_cache.get_prompt_cache(
+                processed_prompt, cached_tokens = self.prompt_cache.get_prompt_cache(
                     self.model, tokenized_prompt
                 )
 
@@ -444,8 +494,8 @@ class ChatGenerator:
             )
 
             # Add cache to kwargs if available
-            if enable_prompt_cache and prompt_cache is not None and prompt_cache.cache:
-                mlx_kwargs["prompt_cache"] = prompt_cache.cache
+            if enable_prompt_cache and self.prompt_cache.cache:
+                mlx_kwargs["prompt_cache"] = self.prompt_cache.cache
 
             # Stream generation
             generated_tokens = []
@@ -457,15 +507,10 @@ class ChatGenerator:
                 draft_model=self.model.draft_model,
                 **mlx_kwargs,
             ):
-                generated_tokens.append(response.token)
-
-                # Track token immediately so cache stays in sync with KV state
-                # even if the stream is interrupted by the client.
-                if enable_prompt_cache and prompt_cache is not None:
-                    prompt_cache.append_token(response.token)
-
                 if response.finish_reason is not None:
                     break
+
+                generated_tokens.append(response.token)
 
                 # Record first token time if this is the first token
                 if first_token_time is None:
@@ -486,9 +531,7 @@ class ChatGenerator:
                 chunk_index = len(generated_tokens)
 
                 # Determine which delta field to populate
-                # Use 'is not None' to correctly handle empty string thinking
-                # (e.g. the opening <think> tag returns delta_thinking="")
-                if parse_result.thinking is not None:
+                if parse_result.thinking:
                     content = StreamContent(
                         reasoning_delta=parse_result.thinking,
                         token=response.token,
@@ -496,7 +539,7 @@ class ChatGenerator:
                     )
                 else:
                     content = StreamContent(
-                        text_delta=parse_result.content if parse_result.content is not None else response.text,
+                        text_delta=parse_result.content or response.text,
                         token=response.token,
                         chunk_index=chunk_index,
                     )
@@ -519,11 +562,10 @@ class ChatGenerator:
                     from_draft=response.from_draft,
                 )
 
-            # Return cache to pool on clean completion. Tokens were already
-            # tracked incrementally via append_token inside the loop.
-            if enable_prompt_cache and prompt_cache is not None:
-                self.prompt_cache_pool.put_cache(prompt_cache)
+            # Extend cache with generated tokens if caching is enabled
+            if enable_prompt_cache and generated_tokens:
+                self.prompt_cache.extend_completion_cache(generated_tokens)
 
         except Exception as e:
-            logger.exception(f"Error during stream generation: {e}")
+            logger.error(f"Error during stream generation: {e}")
             raise RuntimeError(f"Stream generation failed: {e}")
