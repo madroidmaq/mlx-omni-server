@@ -397,11 +397,11 @@ class ChatGenerator:
                 
                 # Create stats similar to stream results
                 stats = GenerationStats(
-                    prompt_tokens=result.prompt_tokens,
-                    completion_tokens=result.generation_tokens,
-                    prompt_tps=result.prompt_tps if hasattr(result, 'prompt_tps') else 0.0,
-                    generation_tps=result.generation_tps if hasattr(result, 'generation_tps') else 0.0,
-                    peak_memory=result.peak_memory if hasattr(result, 'peak_memory') else 0.0,
+                    prompt_tokens=getattr(result, 'prompt_tokens', 0),
+                    completion_tokens=getattr(result, 'generation_tokens', 0),
+                    prompt_tps=getattr(result, 'prompt_tps', 0.0),
+                    generation_tps=getattr(result, 'generation_tps', 0.0),
+                    peak_memory=getattr(result, 'peak_memory', 0.0),
                     cache_hit_tokens=0,
                     time_to_first_token=0.0,
                 )
@@ -542,12 +542,15 @@ class ChatGenerator:
             # Tokenize prompt
             tokenized_prompt = self.tokenizer.encode(prompt)
 
-            # Process cache if enabled
+            # Process cache if enabled - create single request-scoped cache
             processed_prompt = tokenized_prompt
             cached_tokens = 0
+            request_cache = None
 
             if enable_prompt_cache:
-                processed_prompt, cached_tokens = self.prompt_cache.get_prompt_cache(
+                from .prompt_cache import PromptCache
+                request_cache = PromptCache()
+                processed_prompt, cached_tokens = request_cache.get_prompt_cache(
                     self.model, tokenized_prompt
                 )
 
@@ -559,8 +562,8 @@ class ChatGenerator:
             )
 
             # Add cache to kwargs if available
-            if enable_prompt_cache and self.prompt_cache.cache:
-                mlx_kwargs["prompt_cache"] = self.prompt_cache.cache
+            if enable_prompt_cache and request_cache and request_cache.cache:
+                mlx_kwargs["prompt_cache"] = request_cache.cache
 
             # Stream generation
             generated_tokens = []
@@ -628,8 +631,8 @@ class ChatGenerator:
                 )
 
             # Extend cache with generated tokens if caching is enabled
-            if enable_prompt_cache and generated_tokens:
-                self.prompt_cache.extend_completion_cache(generated_tokens)
+            if enable_prompt_cache and request_cache and generated_tokens:
+                request_cache.extend_completion_cache(generated_tokens)
 
         except Exception as e:
             logger.exception("Error during stream generation")

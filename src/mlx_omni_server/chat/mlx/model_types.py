@@ -119,7 +119,8 @@ def load_mlx_model(
                     def __init__(self, model, processor):
                         self.model = model
                         self.processor = processor
-                        self.config = model.config if hasattr(model, 'config') else {}
+                        # Defensively capture config
+                        self.config = getattr(model, 'config', None) or {}
                     
                     def __call__(self, *args, **kwargs):
                         return self.model(*args, **kwargs)
@@ -222,7 +223,7 @@ def load_mlx_model(
                 
             except ImportError as e:
                 logger.error(f"mlx_vlm not available: {e}")
-                raise RuntimeError(f"Model {model_id} requires mlx_vlm but it failed to import: {e}")
+                raise RuntimeError(f"Model {model_id} requires mlx_vlm but it failed to import: {e}") from e
 
         # Standard mlx_lm loading for other models
         model, tokenizer = load(
@@ -232,8 +233,7 @@ def load_mlx_model(
         )
         logger.info(f"Loaded model: {model_id}")
 
-        # Load configuration and create chat tokenizer
-        config = load_config(model_path)
+        # Create chat template using already-loaded config
         chat_template = ChatTemplate(config["model_type"], tokenizer)
 
         # Load draft model if specified
