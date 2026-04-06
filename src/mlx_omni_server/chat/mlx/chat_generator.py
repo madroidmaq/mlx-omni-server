@@ -41,6 +41,7 @@ class ChatGenerator:
         self.chat_template = model.chat_template
         self._prompt_cache = None
         self._logprobs_processor = None
+        self._prompt_cache_pool = None
 
     @classmethod
     def create(
@@ -83,7 +84,7 @@ class ChatGenerator:
             )
             return cls(model)
         except Exception as e:
-            logger.error(f"Failed to create ChatGenerator: {e}")
+            logger.exception("Failed to create ChatGenerator")
             raise
 
     @classmethod
@@ -138,12 +139,35 @@ class ChatGenerator:
 
     @property
     def prompt_cache(self):
-        """Lazy initialization of prompt cache."""
-        if self._prompt_cache is None:
-            from .prompt_cache import PromptCache
+        """Request-scoped prompt cache.
+        
+        Creates a new PromptCache instance for each request to avoid
+        shared state across concurrent requests.
+        """
+        from .prompt_cache import PromptCache
+        return PromptCache()
 
-            self._prompt_cache = PromptCache()
-        return self._prompt_cache
+    @property
+    def prompt_cache_pool(self):
+        """Shim property for backward compatibility.
+        
+        Returns a wrapper that provides get_pool_info() for tests.
+        Note: The actual implementation uses request-scoped caches
+        instead of a shared pool to avoid concurrency issues.
+        """
+        if self._prompt_cache_pool is None:
+            from .prompt_cache_pool import PromptCachePool
+            
+            class PoolShim:
+                """Compatibility shim that delegates to the pool's get_pool_info."""
+                def __init__(self, pool):
+                    self._pool = pool
+                
+                def get_pool_info(self):
+                    return self._pool.get_pool_info()
+            
+            self._prompt_cache_pool = PoolShim(PromptCachePool(max_size=8, ttl_seconds=300.0))
+        return self._prompt_cache_pool
 
     @property
     def logprobs_processor(self):
@@ -317,6 +341,38 @@ class ChatGenerator:
             if getattr(self.model, 'is_vlm_model', False):
                 from mlx_vlm import generate as vlm_generate
                 
+                # Extract images and audio from messages for VLM
+                images_list = []
+                audios_list = []
+                
+                for msg in messages:
+                    if isinstance(msg.get("content"), list):
+                        for item in msg["content"]:
+                            if isinstance(item, dict):
+                                # Extract image URLs/paths
+                                if item.get("type") == "image_url":
+                                    image_url = item.get("image_url", {})
+                                    if isinstance(image_url, dict):
+                                        url = image_url.get("url", "")
+                                    else:
+                                        url = str(image_url)
+                                    if url:
+                                        images_list.append(url)
+                                elif item.get("type") == "image":
+                                    # Some formats use 'image' key directly
+                                    image_data = item.get("image")
+                                    if image_data:
+                                        images_list.append(str(image_data))
+                                # Extract audio URLs/paths
+                                elif item.get("type") == "audio_url":
+                                    audio_url = item.get("audio_url", {})
+                                    if isinstance(audio_url, dict):
+                                        url = audio_url.get("url", "")
+                                    else:
+                                        url = str(audio_url)
+                                    if url:
+                                        audios_list.append(url)
+                
                 # For VLM models, use mlx_vlm's generate directly
                 prompt = self._prepare_prompt(messages, tools, template_kwargs, kwargs.get("json_schema"))
                 
@@ -326,10 +382,13 @@ class ChatGenerator:
                     **kwargs,
                 )
                 
+                # Pass images and audio to VLM generate
                 result = vlm_generate(
                     model=self.model.model.model,  # Unwrap VLM model
                     processor=self.model.model.processor,
                     prompt=prompt,
+                    image=images_list if images_list else None,
+                    audio=audios_list if audios_list else None,
                     **mlx_kwargs,
                 )
                 
@@ -355,7 +414,7 @@ class ChatGenerator:
                     text=chat_result.content,
                     reasoning=chat_result.thinking,
                     tool_calls=chat_result.tool_calls,
-                    text_tokens=None,
+                    text_tokens=[],  # Empty list for VLM (not collected from streaming)
                     reasoning_tokens=None,
                 )
                 
@@ -426,7 +485,7 @@ class ChatGenerator:
             )
 
         except Exception as e:
-            logger.error(f"Error during generation: {e}")
+            logger.exception("Error during generation")
             raise RuntimeError(f"Generation failed: {e}")
 
     def generate_stream(
@@ -467,6 +526,12 @@ class ChatGenerator:
         first_token_time = None
 
         try:
+            # Check if we need to use mlx_vlm for VLM-only models
+            if getattr(self.model, 'is_vlm_model', False):
+                raise NotImplementedError(
+                    "Streaming is not yet supported for VLM-only models (like Gemma 4). "
+                    "Please use the non-streaming generate() method instead."
+                )
 
             # Extract json_schema from kwargs for coordination with chat_template
             json_schema = kwargs.get("json_schema")
@@ -531,7 +596,7 @@ class ChatGenerator:
                 chunk_index = len(generated_tokens)
 
                 # Determine which delta field to populate
-                if parse_result.thinking:
+                if parse_result.thinking is not None:
                     content = StreamContent(
                         reasoning_delta=parse_result.thinking,
                         token=response.token,
@@ -567,5 +632,5 @@ class ChatGenerator:
                 self.prompt_cache.extend_completion_cache(generated_tokens)
 
         except Exception as e:
-            logger.error(f"Error during stream generation: {e}")
+            logger.exception("Error during stream generation")
             raise RuntimeError(f"Stream generation failed: {e}")

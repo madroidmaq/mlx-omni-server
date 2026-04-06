@@ -99,9 +99,15 @@ def load_mlx_model(
             # Use mlx_vlm for Gemma 4 and other VLM-only models
             logger.info(f"Loading {model_id} using mlx_vlm (model_type: {config.get('model_type')})")
             
+            # Warn if draft model is requested - not supported for VLM models
+            if draft_model_id:
+                logger.warning(
+                    f"Speculative decoding (draft_model_id={draft_model_id}) is not supported "
+                    f"for VLM-only models like {model_id}. Proceeding without draft model."
+                )
+            
             try:
                 from mlx_vlm import load as vlm_load
-                from mlx_vlm.prompt_utils import apply_chat_template as vlm_apply_chat_template
                 
                 # Load using mlx_vlm
                 vlm_model, vlm_processor = vlm_load(model_id)
@@ -161,12 +167,17 @@ def load_mlx_model(
                         # Get config from stored config
                         config = self.config
                         
+                        # Don't force add_generation_prompt - let caller control it
+                        add_generation_prompt = kwargs.pop("add_generation_prompt", None)
+                        template_kwargs = dict(kwargs)
+                        if add_generation_prompt is not None:
+                            template_kwargs["add_generation_prompt"] = add_generation_prompt
+                        
                         return mlx_vlm_template(
                             self.processor,
                             config,
                             formatted_messages,
-                            add_generation_prompt=kwargs.pop('add_generation_prompt', True),
-                            **kwargs
+                            **template_kwargs
                         )
                     
                     @property
