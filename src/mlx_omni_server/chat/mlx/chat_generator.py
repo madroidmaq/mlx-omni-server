@@ -39,8 +39,8 @@ class ChatGenerator:
         self.model = model
         self.tokenizer = model.tokenizer
         self.chat_template = model.chat_template
-        self._prompt_cache_pool = None
         self._logprobs_processor = None
+        self._prompt_cache_pool = None
 
     @classmethod
     def create(
@@ -83,7 +83,7 @@ class ChatGenerator:
             )
             return cls(model)
         except Exception as e:
-            logger.error(f"Failed to create ChatGenerator: {e}")
+            logger.exception("Failed to create ChatGenerator")
             raise
 
     @classmethod
@@ -313,8 +313,103 @@ class ChatGenerator:
             Complete generation result
         """
         try:
+            # Check if we need to use mlx_vlm for VLM-only models
+            if getattr(self.model, 'is_vlm_model', False):
+                from mlx_vlm import generate as vlm_generate
+                
+                # Extract images and audio from messages for VLM
+                images_list = []
+                audios_list = []
+                
+                for msg in messages:
+                    if isinstance(msg.get("content"), list):
+                        for item in msg["content"]:
+                            if isinstance(item, dict):
+                                # Extract image URLs/paths
+                                if item.get("type") == "image_url":
+                                    image_url = item.get("image_url", {})
+                                    if isinstance(image_url, dict):
+                                        url = image_url.get("url", "")
+                                    else:
+                                        url = str(image_url)
+                                    if url:
+                                        images_list.append(url)
+                                elif item.get("type") == "image":
+                                    # Some formats use 'image' key directly
+                                    image_data = item.get("image")
+                                    if image_data:
+                                        images_list.append(str(image_data))
+                                # Extract audio URLs/paths
+                                elif item.get("type") == "audio_url":
+                                    audio_url = item.get("audio_url", {})
+                                    if isinstance(audio_url, dict):
+                                        url = audio_url.get("url", "")
+                                    else:
+                                        url = str(audio_url)
+                                    if url:
+                                        audios_list.append(url)
+                
+                # For VLM models, use mlx_vlm's generate directly
+                vlm_template_kwargs = dict(template_kwargs or {})
+                vlm_template_kwargs.setdefault("num_images", len(images_list))
+                vlm_template_kwargs.setdefault("num_audios", len(audios_list))
+                prompt = self._prepare_prompt(
+                    messages, tools, vlm_template_kwargs, kwargs.get("json_schema")
+                )
+
+                mlx_kwargs = self._create_mlx_kwargs(
+                    sampler=sampler,
+                    max_tokens=max_tokens,
+                    **kwargs,
+                )
+                
+                # Pass images and audio to VLM generate
+                result = vlm_generate(
+                    model=self.model.model.model,  # Unwrap VLM model
+                    processor=self.model.model.processor,
+                    prompt=prompt,
+                    image=images_list if images_list else None,
+                    audio=audios_list if audios_list else None,
+                    **mlx_kwargs,
+                )
+                
+                # Extract text from result
+                complete_raw_text = result.text if hasattr(result, 'text') else str(result)
+                
+                # Create stats similar to stream results
+                stats = GenerationStats(
+                    prompt_tokens=getattr(result, 'prompt_tokens', 0),
+                    completion_tokens=getattr(result, 'generation_tokens', 0),
+                    prompt_tps=getattr(result, 'prompt_tps', 0.0),
+                    generation_tps=getattr(result, 'generation_tps', 0.0),
+                    peak_memory=getattr(result, 'peak_memory', 0.0),
+                    cache_hit_tokens=0,
+                    time_to_first_token=0.0,
+                )
+                
+                # Parse the response
+                chat_result = self.chat_template.parse_chat_response(complete_raw_text)
+                
+                # Create CompletionContent
+                content = CompletionContent(
+                    text=chat_result.content,
+                    reasoning=chat_result.thinking,
+                    tool_calls=chat_result.tool_calls,
+                    text_tokens=[],  # Empty list for VLM (not collected from streaming)
+                    reasoning_tokens=None,
+                )
+                
+                # Return result
+                return GenerationResult(
+                    content=content,
+                    finish_reason="stop",
+                    stats=stats,
+                    logprobs=None,
+                    from_draft=False,
+                )
+            
+            # Standard generation for non-VLM models
             # Generate complete response by collecting stream.
-            # stream_generate handles the preparation of configurations.
             complete_raw_text = ""
             final_stream_result = None
             all_text_tokens = []
@@ -371,7 +466,7 @@ class ChatGenerator:
             )
 
         except Exception as e:
-            logger.error(f"Error during generation: {e}")
+            logger.exception("Error during generation")
             raise RuntimeError(f"Generation failed: {e}")
 
     def generate_stream(
@@ -410,9 +505,14 @@ class ChatGenerator:
         # Record start time for first token latency measurement
         request_start_time = time.perf_counter()
         first_token_time = None
-        prompt_cache = None  # Local exclusive cache for this request
 
         try:
+            # Check if we need to use mlx_vlm for VLM-only models
+            if getattr(self.model, 'is_vlm_model', False):
+                raise NotImplementedError(
+                    "Streaming is not yet supported for VLM-only models (like Gemma 4). "
+                    "Please use the non-streaming generate() method instead."
+                )
 
             # Extract json_schema from kwargs for coordination with chat_template
             json_schema = kwargs.get("json_schema")
@@ -426,9 +526,11 @@ class ChatGenerator:
             # Process cache if enabled
             processed_prompt = tokenized_prompt
             cached_tokens = 0
+            prompt_cache = None  # Local exclusive cache for this request
 
             if enable_prompt_cache:
-                # Get an cache copy from the pool
+                # Get a cache copy from the pool so concurrent requests do not
+                # share mutable PromptCache/KV state.
                 prompt_cache = self.prompt_cache_pool.get_cache(
                     tokenized_prompt, self.model.model_id
                 )
@@ -457,15 +559,15 @@ class ChatGenerator:
                 draft_model=self.model.draft_model,
                 **mlx_kwargs,
             ):
+                if response.finish_reason is not None:
+                    break
+
                 generated_tokens.append(response.token)
 
                 # Track token immediately so cache stays in sync with KV state
                 # even if the stream is interrupted by the client.
                 if enable_prompt_cache and prompt_cache is not None:
                     prompt_cache.append_token(response.token)
-
-                if response.finish_reason is not None:
-                    break
 
                 # Record first token time if this is the first token
                 if first_token_time is None:
@@ -496,7 +598,11 @@ class ChatGenerator:
                     )
                 else:
                     content = StreamContent(
-                        text_delta=parse_result.content if parse_result.content is not None else response.text,
+                        text_delta=(
+                            parse_result.content
+                            if parse_result.content is not None
+                            else response.text
+                        ),
                         token=response.token,
                         chunk_index=chunk_index,
                     )
@@ -525,5 +631,5 @@ class ChatGenerator:
                 self.prompt_cache_pool.put_cache(prompt_cache)
 
         except Exception as e:
-            logger.exception(f"Error during stream generation: {e}")
+            logger.exception("Error during stream generation")
             raise RuntimeError(f"Stream generation failed: {e}")

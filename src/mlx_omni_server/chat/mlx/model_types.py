@@ -40,8 +40,26 @@ except ImportError:
         else:
             raise TypeError(f"Unexpected return type from get_model_path: {type(result)}")
 
-from ...utils.logger import logger
-from .tools.chat_template import ChatTemplate
+
+# Models that require mlx_vlm instead of mlx_lm
+MLX_VLM_ONLY_MODELS = {"gemma4"}
+
+
+def _is_vlm_model(model_id: str, config: dict) -> bool:
+    """Check if model should use mlx_vlm."""
+    model_type = config.get("model_type", "")
+    
+    # Check explicit VLM model list
+    if model_type in MLX_VLM_ONLY_MODELS:
+        return True
+    
+    # Check model ID patterns for known VLM models
+    model_id_lower = model_id.lower()
+    for pattern in MLX_VLM_ONLY_MODELS:
+        if pattern in model_id_lower:
+            return True
+    
+    return False
 
 
 def load_mlx_model(
@@ -63,6 +81,9 @@ def load_mlx_model(
         ValueError: If model_id is invalid
         RuntimeError: If model loading fails
     """
+    from ...utils.logger import logger
+    from .tools.chat_template import ChatTemplate
+
     if not model_id or not model_id.strip():
         raise ValueError("model_id cannot be empty")
 
@@ -70,6 +91,160 @@ def load_mlx_model(
 
     try:
         # Load the main model
+        model_path = get_model_path(model_id)
+        config = load_config(model_path)
+
+        # Check if we need to use mlx_vlm for this model
+        if _is_vlm_model(model_id, config):
+            # Use mlx_vlm for Gemma 4 and other VLM-only models
+            logger.info(f"Loading {model_id} using mlx_vlm (model_type: {config.get('model_type')})")
+            
+            # Warn if draft model is requested - not supported for VLM models
+            if draft_model_id:
+                logger.warning(
+                    f"Speculative decoding (draft_model_id={draft_model_id}) is not supported "
+                    f"for VLM-only models like {model_id}. Proceeding without draft model."
+                )
+            
+            try:
+                from mlx_vlm import load as vlm_load
+                
+                # Load using mlx_vlm
+                vlm_model, vlm_processor = vlm_load(model_id)
+                
+                # Create a wrapper for the VLM model to match expected interface
+                class VLMModelWrapper:
+                    """Wrapper to make mlx_vlm model compatible with mlx-lm interface."""
+                    
+                    def __init__(self, model, processor):
+                        self.model = model
+                        self.processor = processor
+                        # Defensively capture config
+                        self.config = getattr(model, 'config', None) or {}
+                    
+                    def __call__(self, *args, **kwargs):
+                        return self.model(*args, **kwargs)
+                
+                class VLMTokenizerWrapper:
+                    """Wrapper to make mlx_vlm processor compatible with tokenizer interface."""
+                    
+                    def __init__(self, processor):
+                        self.processor = processor
+                        # Try to get the underlying tokenizer
+                        if hasattr(processor, 'tokenizer'):
+                            self.tokenizer = processor.tokenizer
+                        else:
+                            self.tokenizer = processor
+                        
+                        # Load config from model path for apply_chat_template
+                        # We'll get it from the model's config attribute if available
+                        self.config = {"model_type": "gemma4"}  # Default
+                        if hasattr(processor, 'model') and hasattr(processor.model, 'config'):
+                            model_config = processor.model.config
+                            if hasattr(model_config, '__dict__'):
+                                self.config = model_config.__dict__
+                            elif isinstance(model_config, dict):
+                                self.config = model_config
+                    
+                    def apply_chat_template(self, *args, **kwargs):
+                        # Use mlx_vlm's apply_chat_template
+                        from mlx_vlm.prompt_utils import apply_chat_template as mlx_vlm_template
+
+                        # Get messages/conversation from args or kwargs
+                        messages = kwargs.pop('messages', kwargs.pop('conversation', None))
+                        if messages is None and args:
+                            messages = args[0]
+                            args = args[1:]
+
+                        # Build proper message list for mlx_vlm
+                        formatted_messages = []
+                        num_images = kwargs.pop("num_images", None)
+                        num_audios = kwargs.pop("num_audios", None)
+                        image_count = 0
+                        audio_count = 0
+                        if isinstance(messages, list):
+                            for msg in messages:
+                                if isinstance(msg, dict):
+                                    formatted_messages.append(msg)
+                                    content = msg.get("content")
+                                    if isinstance(content, list):
+                                        for item in content:
+                                            if not isinstance(item, dict):
+                                                continue
+                                            if item.get("type") in {"image_url", "image"}:
+                                                image_count += 1
+                                            elif item.get("type") in {"audio_url", "audio"}:
+                                                audio_count += 1
+                                elif isinstance(msg, str):
+                                    formatted_messages.append({"role": "user", "content": msg})
+
+                        # Get config from stored config
+                        config = self.config
+
+                        # Don't force add_generation_prompt - let caller control it
+                        add_generation_prompt = kwargs.pop("add_generation_prompt", None)
+                        template_kwargs = dict(kwargs)
+                        if add_generation_prompt is not None:
+                            template_kwargs["add_generation_prompt"] = add_generation_prompt
+                        if num_images is None:
+                            num_images = image_count
+                        if num_audios is None:
+                            num_audios = audio_count
+
+                        return mlx_vlm_template(
+                            self.processor,
+                            config,
+                            formatted_messages,
+                            num_images=num_images,
+                            num_audios=num_audios,
+                            **template_kwargs
+                        )
+                    
+                    @property
+                    def vocab_size(self):
+                        return len(self.tokenizer) if hasattr(self.tokenizer, '__len__') else 0
+                    
+                    def __call__(self, *args, **kwargs):
+                        return self.tokenizer(*args, **kwargs)
+                    
+                    def encode(self, *args, **kwargs):
+                        return self.tokenizer.encode(*args, **kwargs) if hasattr(self.tokenizer, 'encode') else []
+                    
+                    def decode(self, *args, **kwargs):
+                        return self.tokenizer.decode(*args, **kwargs) if hasattr(self.tokenizer, 'decode') else ""
+                
+                # Wrap the model and processor
+                wrapped_model = VLMModelWrapper(vlm_model, vlm_processor)
+                wrapped_tokenizer = VLMTokenizerWrapper(vlm_processor)
+                
+                # Create chat template
+                # Get model_type from processor's model config
+                model_type = "gemma4"  # Default
+                if hasattr(vlm_processor, 'model') and hasattr(vlm_processor.model, 'config'):
+                    model_config = vlm_processor.model.config
+                    if hasattr(model_config, 'model_type'):
+                        model_type = model_config.model_type
+                    elif hasattr(model_config, '__dict__') and 'model_type' in model_config.__dict__:
+                        model_type = model_config.__dict__['model_type']
+                chat_template = ChatTemplate(model_type, wrapped_tokenizer)
+                
+                logger.info(f"Loaded {model_id} with mlx_vlm successfully")
+                
+                return MLXModel(
+                    model_id=model_id,
+                    adapter_path=adapter_path,
+                    draft_model_id=draft_model_id,
+                    model=wrapped_model,
+                    tokenizer=wrapped_tokenizer,
+                    chat_template=chat_template,
+                    is_vlm_model=True,
+                )
+                
+            except ImportError as e:
+                logger.error(f"mlx_vlm not available: {e}")
+                raise RuntimeError(f"Model {model_id} requires mlx_vlm but it failed to import: {e}") from e
+
+        # Standard mlx_lm loading for other models
         model, tokenizer = load(
             model_id,
             tokenizer_config={"trust_remote_code": True},
@@ -77,9 +252,7 @@ def load_mlx_model(
         )
         logger.info(f"Loaded model: {model_id}")
 
-        # Load configuration and create chat tokenizer
-        model_path = get_model_path(model_id)
-        config = load_config(model_path)
+        # Create chat template using already-loaded config
         chat_template = ChatTemplate(config["model_type"], tokenizer)
 
         # Load draft model if specified
@@ -135,9 +308,10 @@ class MLXModel:
         draft_model_id: Optional[str],
         model: nn.Module,
         tokenizer: TokenizerWrapper,
-        chat_template: ChatTemplate,
+        chat_template: "ChatTemplate",
         draft_model: Optional[nn.Module] = None,
         draft_tokenizer: Optional[TokenizerWrapper] = None,
+        is_vlm_model: bool = False,
     ):
         """Initialize MLX model container.
 
@@ -152,6 +326,7 @@ class MLXModel:
             chat_template: Chat template instance
             draft_model: Loaded draft model (optional)
             draft_tokenizer: Draft model tokenizer (optional)
+            is_vlm_model: Whether this is a VLM-only model (like Gemma 4)
         """
         # Model identification
         self.model_id = model_id
@@ -164,6 +339,7 @@ class MLXModel:
         self.chat_template = chat_template
         self.draft_model = draft_model
         self.draft_tokenizer = draft_tokenizer
+        self.is_vlm_model = is_vlm_model
 
     @classmethod
     def load(
@@ -181,6 +357,8 @@ class MLXModel:
             parts.append(f"adapter_path={self.adapter_path}")
         if self.draft_model_id:
             parts.append(f"draft_model_id={self.draft_model_id}")
+        if self.is_vlm_model:
+            parts.append("is_vlm_model=True")
         return f"MLXModel({', '.join(parts)})"
 
     def __eq__(self, other) -> bool:
