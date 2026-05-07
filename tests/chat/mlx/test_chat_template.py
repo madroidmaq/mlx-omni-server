@@ -1,4 +1,5 @@
 from mlx_lm import load
+
 from mlx_omni_server.chat.mlx.tools.chat_template import ChatTemplate
 
 
@@ -212,7 +213,9 @@ class TestChatTemplate:
         messages = [{"role": "user", "content": "test"}]
 
         # This should not raise an error even with extra kwargs
-        prompt = chat_template.apply_chat_template(messages=messages, custom_param="test_value")
+        prompt = chat_template.apply_chat_template(
+            messages=messages, custom_param="test_value"
+        )
         assert isinstance(prompt, str)
 
     def test_tool_calls_json_conversion(self):
@@ -297,6 +300,43 @@ class TestChatTemplate:
         assert args_dict == {"location": "NYC", "unit": "celsius"}
 
         print("✓ OpenAI adapter tool call conversion test passed")
+
+    def test_tool_calls_none_content_coerced(self):
+        """Test that assistant messages with tool_calls and content=None don't crash."""
+        messages = [
+            {"role": "user", "content": "What's the weather?"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_abc",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": '{"location": "NYC"}',
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_abc", "content": "Sunny, 25°C"},
+            {"role": "user", "content": "Thanks"},
+        ]
+
+        class CapturingMockTokenizer:
+            def apply_chat_template(self, conversation, **_kwargs):
+                for msg in conversation:
+                    if msg.get("role") == "assistant" and "tool_calls" in msg:
+                        assert (
+                            msg["content"] == ""
+                        ), f"Expected '', got {msg['content']!r}"
+                return "ok"
+
+        chat_template = ChatTemplate(
+            tools_parser_type="qwen3", tokenizer=CapturingMockTokenizer()
+        )
+        result = chat_template.apply_chat_template(messages=messages)
+        assert result == "ok"
 
     def test_openai_adapter_none_input(self):
         """Test that _convert_tool_calls handles None input correctly"""

@@ -64,7 +64,9 @@ class ChatTemplate(ABC):
         self.has_tools = False
         self.reason_decoder = None
         self.enable_thinking_parse: Optional[bool] = None
-        self.tools_parser: Optional[BaseToolParser] = load_tools_parser(tools_parser_type)
+        self.tools_parser: Optional[BaseToolParser] = load_tools_parser(
+            tools_parser_type
+        )
 
         # Initialize tool call markers with default values
         self.start_tool_calls = self.tools_parser.start_tool_calls
@@ -91,9 +93,13 @@ class ChatTemplate(ABC):
         for message in messages:
             # messages are already in dict format
             msg_dict = message.copy()  # Make a copy to avoid modifying original
+            if msg_dict.get("content") is None:
+                msg_dict["content"] = ""
             if isinstance(msg_dict.get("content"), list):
                 msg_dict["content"] = "\n\n".join(
-                    item["text"] for item in msg_dict["content"] if item.get("type") == "text"
+                    item["text"]
+                    for item in msg_dict["content"]
+                    if item.get("type") == "text"
                 )
             # Convert tool_calls arguments from JSON string to dict for Jinja template
             # The Qwen3 chat template expects arguments as a dict, not a JSON string
@@ -248,16 +254,22 @@ class ChatTemplate(ABC):
             thinking = result.get("thinking")
 
         if self.has_tools:
-            logger.debug(f"parse_chat_response: has_tools=True, parser type={type(self.tools_parser).__name__}")
+            logger.debug(
+                f"parse_chat_response: has_tools=True, parser type={type(self.tools_parser).__name__}"
+            )
             tool_calls = self.tools_parser.parse_tools(content)
 
             # If tool calls were found, clear content to avoid duplication
             if tool_calls:
-                logger.debug(f"parse_chat_response: found {len(tool_calls)} tool call(s)")
+                logger.debug(
+                    f"parse_chat_response: found {len(tool_calls)} tool call(s)"
+                )
                 content = ""
             else:
                 logger.debug("parse_chat_response: no tool calls found by parser")
         else:
             logger.debug("parse_chat_response: has_tools=False, skipping tool parsing")
 
-        return ChatTemplateResult(content=content, thinking=thinking, tool_calls=tool_calls)
+        return ChatTemplateResult(
+            content=content, thinking=thinking, tool_calls=tool_calls
+        )
