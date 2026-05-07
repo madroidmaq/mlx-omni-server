@@ -84,4 +84,8 @@ def test_load_mlx_model_uses_mlx_vlm_for_gemma4(monkeypatch):
     assert prompt == "vlm prompt"
     assert captured_template_args["processor"] is loaded.model.processor
     assert captured_template_args["messages"] == [{"role": "user", "content": "look"}]
-    assert captured_template_args["kwargs"] == {"add_generation_prompt": True}
+    assert captured_template_args["kwargs"] == {
+        "add_generation_prompt": True,
+        "num_images": 0,
+        "num_audios": 0,
+    }

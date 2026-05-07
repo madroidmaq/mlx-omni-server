@@ -439,6 +439,70 @@ class TestChatGenerator:
         second_copy = wrapper.prompt_cache_pool.get_cache(list("abc"), "mock-model")
         assert second_copy.tokens == ["a", "b", "c", 99]
 
+    def test_vlm_generate_passes_multimodal_counts_to_template(self, monkeypatch):
+        captured_template_kwargs = {}
+        captured_vlm_kwargs = {}
+
+        class MockTemplate:
+            def apply_chat_template(self, messages, tools=None, **kwargs):
+                captured_template_kwargs.update(kwargs)
+                return "prompt-with-image-token"
+
+            def parse_chat_response(self, text):
+                return type(
+                    "ChatResult", (), {"content": text, "thinking": None, "tool_calls": None}
+                )()
+
+        wrapper = ChatGenerator.__new__(ChatGenerator)
+        wrapper.model = type(
+            "Model",
+            (),
+            {
+                "is_vlm_model": True,
+                "model": type("Wrapped", (), {"model": object(), "processor": object()})(),
+            },
+        )()
+        wrapper.tokenizer = None
+        wrapper.chat_template = MockTemplate()
+        wrapper._prompt_cache_pool = None
+        wrapper._logprobs_processor = None
+
+        def fake_vlm_generate(**kwargs):
+            captured_vlm_kwargs.update(kwargs)
+            return type(
+                "Result",
+                (),
+                {
+                    "text": "red",
+                    "prompt_tokens": 1,
+                    "generation_tokens": 1,
+                    "prompt_tps": 0.0,
+                    "generation_tps": 0.0,
+                    "peak_memory": 0.0,
+                },
+            )()
+
+        monkeypatch.setattr("mlx_vlm.generate", fake_vlm_generate)
+
+        result = wrapper.generate(
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "What color?"},
+                        {"type": "image_url", "image_url": {"url": "/tmp/red.png"}},
+                    ],
+                }
+            ],
+            max_tokens=4,
+        )
+
+        assert result.content.text == "red"
+        assert captured_template_kwargs["num_images"] == 1
+        assert captured_template_kwargs["num_audios"] == 0
+        assert captured_vlm_kwargs["prompt"] == "prompt-with-image-token"
+        assert captured_vlm_kwargs["image"] == ["/tmp/red.png"]
+
     def test_vlm_streaming_raises_clear_error(self):
         """VLM models should fail clearly for unsupported streaming."""
         wrapper = ChatGenerator.__new__(ChatGenerator)

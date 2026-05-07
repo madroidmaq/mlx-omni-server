@@ -350,8 +350,13 @@ class ChatGenerator:
                                         audios_list.append(url)
                 
                 # For VLM models, use mlx_vlm's generate directly
-                prompt = self._prepare_prompt(messages, tools, template_kwargs, kwargs.get("json_schema"))
-                
+                vlm_template_kwargs = dict(template_kwargs or {})
+                vlm_template_kwargs.setdefault("num_images", len(images_list))
+                vlm_template_kwargs.setdefault("num_audios", len(audios_list))
+                prompt = self._prepare_prompt(
+                    messages, tools, vlm_template_kwargs, kwargs.get("json_schema")
+                )
+
                 mlx_kwargs = self._create_mlx_kwargs(
                     sampler=sampler,
                     max_tokens=max_tokens,

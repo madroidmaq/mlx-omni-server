@@ -149,35 +149,54 @@ def load_mlx_model(
                     def apply_chat_template(self, *args, **kwargs):
                         # Use mlx_vlm's apply_chat_template
                         from mlx_vlm.prompt_utils import apply_chat_template as mlx_vlm_template
-                        
+
                         # Get messages/conversation from args or kwargs
                         messages = kwargs.pop('messages', kwargs.pop('conversation', None))
                         if messages is None and args:
                             messages = args[0]
                             args = args[1:]
-                        
+
                         # Build proper message list for mlx_vlm
                         formatted_messages = []
+                        num_images = kwargs.pop("num_images", None)
+                        num_audios = kwargs.pop("num_audios", None)
+                        image_count = 0
+                        audio_count = 0
                         if isinstance(messages, list):
                             for msg in messages:
                                 if isinstance(msg, dict):
                                     formatted_messages.append(msg)
+                                    content = msg.get("content")
+                                    if isinstance(content, list):
+                                        for item in content:
+                                            if not isinstance(item, dict):
+                                                continue
+                                            if item.get("type") in {"image_url", "image"}:
+                                                image_count += 1
+                                            elif item.get("type") in {"audio_url", "audio"}:
+                                                audio_count += 1
                                 elif isinstance(msg, str):
                                     formatted_messages.append({"role": "user", "content": msg})
-                        
+
                         # Get config from stored config
                         config = self.config
-                        
+
                         # Don't force add_generation_prompt - let caller control it
                         add_generation_prompt = kwargs.pop("add_generation_prompt", None)
                         template_kwargs = dict(kwargs)
                         if add_generation_prompt is not None:
                             template_kwargs["add_generation_prompt"] = add_generation_prompt
-                        
+                        if num_images is None:
+                            num_images = image_count
+                        if num_audios is None:
+                            num_audios = audio_count
+
                         return mlx_vlm_template(
                             self.processor,
                             config,
                             formatted_messages,
+                            num_images=num_images,
+                            num_audios=num_audios,
                             **template_kwargs
                         )
                     
