@@ -39,7 +39,6 @@ class ChatGenerator:
         self.model = model
         self.tokenizer = model.tokenizer
         self.chat_template = model.chat_template
-        self._prompt_cache = None
         self._logprobs_processor = None
         self._prompt_cache_pool = None
 
@@ -138,35 +137,12 @@ class ChatGenerator:
         )
 
     @property
-    def prompt_cache(self):
-        """Request-scoped prompt cache.
-        
-        Creates a new PromptCache instance for each request to avoid
-        shared state across concurrent requests.
-        """
-        from .prompt_cache import PromptCache
-        return PromptCache()
-
-    @property
     def prompt_cache_pool(self):
-        """Shim property for backward compatibility.
-        
-        Returns a wrapper that provides get_pool_info() for tests.
-        Note: The actual implementation uses request-scoped caches
-        instead of a shared pool to avoid concurrency issues.
-        """
+        """Lazy initialization of prompt cache pool."""
         if self._prompt_cache_pool is None:
             from .prompt_cache_pool import PromptCachePool
-            
-            class PoolShim:
-                """Compatibility shim that delegates to the pool's get_pool_info."""
-                def __init__(self, pool):
-                    self._pool = pool
-                
-                def get_pool_info(self):
-                    return self._pool.get_pool_info()
-            
-            self._prompt_cache_pool = PoolShim(PromptCachePool(max_size=8, ttl_seconds=300.0))
+
+            self._prompt_cache_pool = PromptCachePool()
         return self._prompt_cache_pool
 
     @property
@@ -542,15 +518,18 @@ class ChatGenerator:
             # Tokenize prompt
             tokenized_prompt = self.tokenizer.encode(prompt)
 
-            # Process cache if enabled - create single request-scoped cache
+            # Process cache if enabled
             processed_prompt = tokenized_prompt
             cached_tokens = 0
-            request_cache = None
+            prompt_cache = None  # Local exclusive cache for this request
 
             if enable_prompt_cache:
-                from .prompt_cache import PromptCache
-                request_cache = PromptCache()
-                processed_prompt, cached_tokens = request_cache.get_prompt_cache(
+                # Get a cache copy from the pool so concurrent requests do not
+                # share mutable PromptCache/KV state.
+                prompt_cache = self.prompt_cache_pool.get_cache(
+                    tokenized_prompt, self.model.model_id
+                )
+                processed_prompt, cached_tokens = prompt_cache.get_prompt_cache(
                     self.model, tokenized_prompt
                 )
 
@@ -562,8 +541,8 @@ class ChatGenerator:
             )
 
             # Add cache to kwargs if available
-            if enable_prompt_cache and request_cache and request_cache.cache:
-                mlx_kwargs["prompt_cache"] = request_cache.cache
+            if enable_prompt_cache and prompt_cache is not None and prompt_cache.cache:
+                mlx_kwargs["prompt_cache"] = prompt_cache.cache
 
             # Stream generation
             generated_tokens = []
@@ -579,6 +558,11 @@ class ChatGenerator:
                     break
 
                 generated_tokens.append(response.token)
+
+                # Track token immediately so cache stays in sync with KV state
+                # even if the stream is interrupted by the client.
+                if enable_prompt_cache and prompt_cache is not None:
+                    prompt_cache.append_token(response.token)
 
                 # Record first token time if this is the first token
                 if first_token_time is None:
@@ -599,6 +583,8 @@ class ChatGenerator:
                 chunk_index = len(generated_tokens)
 
                 # Determine which delta field to populate
+                # Use 'is not None' to correctly handle empty string thinking
+                # (e.g. the opening <think> tag returns delta_thinking="")
                 if parse_result.thinking is not None:
                     content = StreamContent(
                         reasoning_delta=parse_result.thinking,
@@ -607,7 +593,11 @@ class ChatGenerator:
                     )
                 else:
                     content = StreamContent(
-                        text_delta=parse_result.content or response.text,
+                        text_delta=(
+                            parse_result.content
+                            if parse_result.content is not None
+                            else response.text
+                        ),
                         token=response.token,
                         chunk_index=chunk_index,
                     )
@@ -630,9 +620,10 @@ class ChatGenerator:
                     from_draft=response.from_draft,
                 )
 
-            # Extend cache with generated tokens if caching is enabled
-            if enable_prompt_cache and request_cache and generated_tokens:
-                request_cache.extend_completion_cache(generated_tokens)
+            # Return cache to pool on clean completion. Tokens were already
+            # tracked incrementally via append_token inside the loop.
+            if enable_prompt_cache and prompt_cache is not None:
+                self.prompt_cache_pool.put_cache(prompt_cache)
 
         except Exception as e:
             logger.exception("Error during stream generation")

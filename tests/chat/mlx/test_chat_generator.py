@@ -363,3 +363,92 @@ class TestChatGenerator:
         assert len(result_a2.content.text) > 0
         # Should have cache hits from the prefix of the first request
         assert result_a2.stats.cache_hit_tokens > 0
+
+    def test_prompt_cache_uses_pool_and_preserves_request_isolation(self, monkeypatch):
+        """Prompt caching should use PromptCachePool copies, not one shared cache."""
+        wrapper = ChatGenerator.__new__(ChatGenerator)
+        wrapper.model = type(
+            "Model",
+            (),
+            {
+                "model_id": "mock-model",
+                "model": object(),
+                "draft_model": None,
+                "is_vlm_model": False,
+            },
+        )()
+        wrapper.tokenizer = type(
+            "Tokenizer", (), {"encode": lambda self, prompt: list(prompt)}
+        )()
+        wrapper.chat_template = type(
+            "Template",
+            (),
+            {
+                "apply_chat_template": lambda self, messages, tools=None, **kwargs: messages[
+                    0
+                ]["content"],
+                "stream_parse_chat_result": lambda self, text: type(
+                    "ParseResult", (), {"thinking": None, "content": text}
+                )(),
+            },
+        )()
+        wrapper._prompt_cache_pool = None
+        wrapper._logprobs_processor = None
+
+        monkeypatch.setattr(
+            "mlx_omni_server.chat.mlx.prompt_cache.make_prompt_cache",
+            lambda model: [object()],
+        )
+
+        class FakeResponse:
+            finish_reason = None
+            token = 99
+            text = "x"
+            prompt_tokens = 3
+            generation_tokens = 1
+            prompt_tps = 0.0
+            generation_tps = 0.0
+            peak_memory = 0.0
+            from_draft = False
+
+        def fake_stream_generate(**kwargs):
+            yield FakeResponse()
+            done = FakeResponse()
+            done.finish_reason = "stop"
+            yield done
+
+        monkeypatch.setattr(
+            "mlx_omni_server.chat.mlx.chat_generator.stream_generate", fake_stream_generate
+        )
+
+        assert wrapper.prompt_cache_pool.get_pool_info()["pool_size"] == 0
+        list(
+            wrapper.generate_stream(
+                messages=[{"role": "user", "content": "abc"}],
+                max_tokens=1,
+                enable_prompt_cache=True,
+            )
+        )
+        assert wrapper.prompt_cache_pool.get_pool_info()["pool_size"] >= 1
+
+        cache_from_pool = wrapper.prompt_cache_pool.get_cache(list("abc"), "mock-model")
+        assert cache_from_pool.model_key == "mock-model"
+        assert cache_from_pool.tokens == ["a", "b", "c", 99]
+
+        cache_from_pool.tokens.append("mutated")
+        second_copy = wrapper.prompt_cache_pool.get_cache(list("abc"), "mock-model")
+        assert second_copy.tokens == ["a", "b", "c", 99]
+
+    def test_vlm_streaming_raises_clear_error(self):
+        """VLM models should fail clearly for unsupported streaming."""
+        wrapper = ChatGenerator.__new__(ChatGenerator)
+        wrapper.model = type("Model", (), {"is_vlm_model": True})()
+        wrapper.tokenizer = None
+        wrapper.chat_template = None
+        wrapper._prompt_cache_pool = None
+        wrapper._logprobs_processor = None
+
+        with pytest.raises(
+            RuntimeError, match="Streaming is not yet supported for VLM-only models"
+        ):
+            list(wrapper.generate_stream(messages=[{"role": "user", "content": "hi"}]))
