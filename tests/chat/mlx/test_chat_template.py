@@ -7,6 +7,26 @@ class TestChatTemplate:
     nonthinking_model_id = "mlx-community/gemma-3-1b-it-4bit-DWQ"
     tools_model_id = "mlx-community/Llama-3.2-1B-Instruct-4bit"
 
+    def test_thinking_disabled_strips_trailing_think_tag(self):
+        """Test defensive stripping when tokenizer still appends <think>."""
+
+        class MockTokenizer:
+            def apply_chat_template(self, **_kwargs):
+                return "prompt<think>"
+
+        chat_template = ChatTemplate(
+            tools_parser_type="qwen3", tokenizer=MockTokenizer()
+        )
+
+        prompt = chat_template.apply_chat_template(
+            messages=[{"role": "user", "content": "hello"}],
+            enable_thinking_parse=False,
+        )
+
+        assert prompt == "prompt"
+        assert chat_template.enable_thinking_parse is False
+        assert chat_template.reason_decoder is None
+
     def test_thinking_enabled(self):
         # Test explicitly enabling thinking
         model, tokenizer = load(self.thinking_model_id)

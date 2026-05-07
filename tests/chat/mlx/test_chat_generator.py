@@ -1,5 +1,7 @@
 """Tests for ChatGenerator."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
@@ -20,6 +22,28 @@ def mlx_wrapper():
 
 class TestChatGenerator:
     """Test ChatGenerator functionality."""
+
+    def test_prepare_prompt_keeps_enable_thinking_for_tokenizer(self):
+        """Test enable_thinking is mapped for parsing but still forwarded."""
+        captured_kwargs = {}
+
+        class MockChatTemplate:
+            def apply_chat_template(self, messages, tools=None, **kwargs):
+                captured_kwargs.update(kwargs)
+                return "prompt"
+
+        generator = ChatGenerator(
+            SimpleNamespace(tokenizer=object(), chat_template=MockChatTemplate())
+        )
+
+        result = generator._prepare_prompt(
+            messages=[{"role": "user", "content": "hello"}],
+            template_kwargs={"enable_thinking": False},
+        )
+
+        assert result == "prompt"
+        assert captured_kwargs["enable_thinking"] is False
+        assert captured_kwargs["enable_thinking_parse"] is False
 
     def test_initialization(self, mlx_wrapper):
         """Test basic initialization."""
