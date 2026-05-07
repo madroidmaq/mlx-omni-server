@@ -184,11 +184,11 @@ class ChatGenerator:
         if enable_thinking and json_schema is not None:
             template_kwargs["skip_thinking_prefill"] = True
 
-        # Map enable_thinking to enable_thinking_parse for new parameter name
+        # Map enable_thinking to enable_thinking_parse for new parameter name.
+        # Keep enable_thinking in template_kwargs so it gets forwarded to the
+        # tokenizer's apply_chat_template (e.g. Qwen3 uses it to suppress <think>).
         if "enable_thinking" in template_kwargs:
-            template_kwargs["enable_thinking_parse"] = template_kwargs.pop(
-                "enable_thinking"
-            )
+            template_kwargs["enable_thinking_parse"] = template_kwargs["enable_thinking"]
 
         prompt = self.chat_template.apply_chat_template(
             messages=messages,
