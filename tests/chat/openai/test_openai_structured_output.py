@@ -83,6 +83,8 @@ class TestStructuredOutput:
                 {"role": "user", "content": "how can I solve 8x + 7 = -23"},
             ],
             response_format=response_format,
+            temperature=0,
+            max_tokens=256,
         )
         print(response)
 
@@ -112,6 +114,8 @@ class TestStructuredOutput:
                 {"role": "user", "content": "how can I solve 8x + 7 = -23"},
             ],
             response_format=MathReasoning,
+            temperature=0,
+            max_tokens=256,
         )
         print(response)
 
