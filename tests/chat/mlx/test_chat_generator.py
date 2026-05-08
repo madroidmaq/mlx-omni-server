@@ -6,9 +6,11 @@ import pytest
 
 from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
 from mlx_omni_server.chat.mlx.core_types import (
+    ChatTemplateResult,
     CompletionContent,
     GenerationResult,
     StreamContent,
+    ToolCall,
 )
 from mlx_omni_server.utils.logger import logger
 
@@ -22,6 +24,38 @@ def mlx_wrapper():
 
 class TestChatGenerator:
     """Test ChatGenerator functionality."""
+
+    def test_merge_streamed_reasoning_keeps_tool_content_empty(self):
+        chat_result = ChatTemplateResult(
+            content="",
+            thinking=None,
+            tool_calls=[ToolCall(id="call_1", name="get_weather", arguments={})],
+        )
+
+        content, reasoning = ChatGenerator._merge_streamed_content(
+            chat_result,
+            streamed_text='<tool_call>{"name":"get_weather"}</tool_call>',
+            streamed_reasoning="Need the weather tool.",
+        )
+
+        assert content == ""
+        assert reasoning == "Need the weather tool."
+
+    def test_merge_schema_output_splits_reasoning_before_json(self):
+        chat_result = ChatTemplateResult(
+            content='Think it through.\n{"final_answer":"6","steps":[]}',
+            thinking=None,
+        )
+
+        content, reasoning = ChatGenerator._merge_streamed_content(
+            chat_result,
+            streamed_text="",
+            streamed_reasoning='Think it through.\n{"final_answer":"6","steps":[]}',
+            json_schema={"type": "object"},
+        )
+
+        assert content == '{"final_answer":"6","steps":[]}'
+        assert reasoning == "Think it through."
 
     def test_prepare_prompt_keeps_enable_thinking_for_tokenizer(self):
         """Test enable_thinking is mapped for parsing but still forwarded."""
@@ -410,7 +444,9 @@ class TestChatGenerator:
             {
                 "apply_chat_template": lambda self, messages, tools=None, **kwargs: messages[
                     0
-                ]["content"],
+                ][
+                    "content"
+                ],
                 "stream_parse_chat_result": lambda self, text: type(
                     "ParseResult", (), {"thinking": None, "content": text}
                 )(),
@@ -442,7 +478,8 @@ class TestChatGenerator:
             yield done
 
         monkeypatch.setattr(
-            "mlx_omni_server.chat.mlx.chat_generator.stream_generate", fake_stream_generate
+            "mlx_omni_server.chat.mlx.chat_generator.stream_generate",
+            fake_stream_generate,
         )
 
         assert wrapper.prompt_cache_pool.get_pool_info()["pool_size"] == 0
@@ -474,7 +511,9 @@ class TestChatGenerator:
 
             def parse_chat_response(self, text):
                 return type(
-                    "ChatResult", (), {"content": text, "thinking": None, "tool_calls": None}
+                    "ChatResult",
+                    (),
+                    {"content": text, "thinking": None, "tool_calls": None},
                 )()
 
         wrapper = ChatGenerator.__new__(ChatGenerator)
@@ -483,7 +522,9 @@ class TestChatGenerator:
             (),
             {
                 "is_vlm_model": True,
-                "model": type("Wrapped", (), {"model": object(), "processor": object()})(),
+                "model": type(
+                    "Wrapped", (), {"model": object(), "processor": object()}
+                )(),
             },
         )()
         wrapper.tokenizer = None
