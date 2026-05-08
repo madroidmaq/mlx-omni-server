@@ -1,7 +1,6 @@
 import importlib
 import importlib.util
 import json
-import logging
 from typing import Dict, List, Optional, Tuple, Type
 
 from huggingface_hub import CachedRepoInfo, scan_cache_dir

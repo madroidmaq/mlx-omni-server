@@ -8,8 +8,9 @@ from mlx_omni_server.utils.logger import logger
 
 from ..core_types import ToolCall
 
-
-_TOOL_CALL_BLOCK_RE = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL | re.IGNORECASE)
+_TOOL_CALL_BLOCK_RE = re.compile(
+    r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL | re.IGNORECASE
+)
 
 
 def _extract_balanced_json_object(raw: str) -> Optional[str]:
@@ -132,7 +133,9 @@ def extract_tools(text: str) -> Optional[List[ToolCall]]:
     # If the model attempted a <tool_call> but we couldn't parse it, do NOT fall back
     # to shallow regex parsing (it can produce empty args {} and trigger tool-error loops).
     if saw_tool_call_block:
-        logger.warning("Detected <tool_call> block(s) but failed to parse; returning no tool calls")
+        logger.warning(
+            "Detected <tool_call> block(s) but failed to parse; returning no tool calls"
+        )
         return None
 
     # Fallback: legacy regex-based extraction for non-tagged formats.
@@ -160,7 +163,9 @@ def extract_tools(text: str) -> Optional[List[ToolCall]]:
         except json.JSONDecodeError:
             logger.warning(f"Failed to parse tool arguments as JSON: {args_str}")
             arguments = {}
-        tool_call = ToolCall(id=f"call_{uuid.uuid4().hex[:8]}", name=name, arguments=arguments)
+        tool_call = ToolCall(
+            id=f"call_{uuid.uuid4().hex[:8]}", name=name, arguments=arguments
+        )
         results.append(tool_call)
 
     return results if results else None

@@ -3,10 +3,7 @@ import time
 import uuid
 from typing import Any, Generator, List, Optional, Tuple
 
-from mlx_omni_server.chat.mlx.chat_generator import (
-    DEFAULT_MAX_TOKENS,
-    ChatGenerator,
-)
+from mlx_omni_server.chat.mlx.chat_generator import DEFAULT_MAX_TOKENS, ChatGenerator
 from mlx_omni_server.chat.mlx.core_types import ToolCall as CoreToolCall
 from mlx_omni_server.chat.openai.schema import (
     ChatCompletionChoice,
@@ -84,7 +81,9 @@ def _convert_tool_calls(
                 seen.add(key)
                 unique_calls.append(tc)
             else:
-                logger.debug(f"Deduplicated duplicate tool call: {tc.name}({tc.arguments})")
+                logger.debug(
+                    f"Deduplicated duplicate tool call: {tc.name}({tc.arguments})"
+                )
         core_tool_calls = unique_calls
 
     return [
@@ -115,7 +114,11 @@ class OpenAIAdapter:
 
     def _prepare_generation_params(self, request: ChatCompletionRequest) -> dict:
         """Prepare common parameters for both generate and stream_generate."""
-        max_tokens = request.max_completion_tokens or request.max_tokens or self._default_max_tokens
+        max_tokens = (
+            request.max_completion_tokens
+            or request.max_tokens
+            or self._default_max_tokens
+        )
 
         # Extract parameters from request and extra params
         extra_params = request.get_extra_params()
@@ -149,14 +152,25 @@ class OpenAIAdapter:
         # Convert messages to dict format
         messages = [
             {
-                "role": (msg.role.value if hasattr(msg.role, "value") else str(msg.role)),
+                "role": (
+                    msg.role.value if hasattr(msg.role, "value") else str(msg.role)
+                ),
                 "content": msg.content,
                 **({"name": msg.name} if msg.name else {}),
-                **({"tool_calls": [
-                    tc.model_dump(mode="json", exclude_none=True) 
-                    if hasattr(tc, "model_dump") else tc 
-                    for tc in msg.tool_calls
-                ]} if msg.tool_calls else {}),
+                **(
+                    {
+                        "tool_calls": [
+                            (
+                                tc.model_dump(mode="json", exclude_none=True)
+                                if hasattr(tc, "model_dump")
+                                else tc
+                            )
+                            for tc in msg.tool_calls
+                        ]
+                    }
+                    if msg.tool_calls
+                    else {}
+                ),
                 **({"tool_call_id": msg.tool_call_id} if msg.tool_call_id else {}),
             }
             for msg in request.messages
@@ -166,7 +180,11 @@ class OpenAIAdapter:
         tools = None
         if request.tools:
             tools = [
-                tool.model_dump(mode='json') if hasattr(tool, "model_dump") else dict(tool)
+                (
+                    tool.model_dump(mode="json")
+                    if hasattr(tool, "model_dump")
+                    else dict(tool)
+                )
                 for tool in request.tools
             ]
 
@@ -246,9 +264,13 @@ class OpenAIAdapter:
             Tuple of (tool_calls or None, finish_reason)
         """
         text_preview = (
-            accumulated_text[:500] + "..." if len(accumulated_text) > 500 else accumulated_text
+            accumulated_text[:500] + "..."
+            if len(accumulated_text) > 500
+            else accumulated_text
         )
-        logger.info(f"Stream complete. Parsing for tool calls. Text preview: {text_preview}")
+        logger.info(
+            f"Stream complete. Parsing for tool calls. Text preview: {text_preview}"
+        )
 
         chat_result = self._generate_wrapper.chat_template.parse_chat_response(
             accumulated_text
@@ -263,7 +285,9 @@ class OpenAIAdapter:
             tool_calls = _convert_tool_calls(chat_result.tool_calls)
             logger.info(f"Found {len(tool_calls)} tool calls in stream")
             for i, tc in enumerate(tool_calls):
-                logger.info(f"  Tool call {i}: {tc.function.name}({tc.function.arguments})")
+                logger.info(
+                    f"  Tool call {i}: {tc.function.name}({tc.function.arguments})"
+                )
             return tool_calls, "tool_calls"
 
         logger.info("No tool calls found in stream response")
@@ -366,7 +390,9 @@ class OpenAIAdapter:
                         index=0,
                         message=message,
                         finish_reason=(
-                            "tool_calls" if message.tool_calls else (result.finish_reason or "stop")
+                            "tool_calls"
+                            if message.tool_calls
+                            else (result.finish_reason or "stop")
                         ),
                         logprobs=result.logprobs,
                     )
@@ -431,8 +457,10 @@ class OpenAIAdapter:
 
                 # Filter tool call XML when tools are available
                 if has_tools and content:
-                    stream_content, pending_buffer, in_tool_call = self._filter_stream_content(
-                        content, pending_buffer, in_tool_call
+                    stream_content, pending_buffer, in_tool_call = (
+                        self._filter_stream_content(
+                            content, pending_buffer, in_tool_call
+                        )
                     )
                 else:
                     stream_content = content
@@ -448,14 +476,22 @@ class OpenAIAdapter:
                 result = chunk
 
             # Flush remaining buffer if not in tool call mode
-            if pending_buffer and not in_tool_call and not _has_tool_call_marker(pending_buffer):
-                yield self._create_stream_chunk(chat_id, request.model, content=pending_buffer)
+            if (
+                pending_buffer
+                and not in_tool_call
+                and not _has_tool_call_marker(pending_buffer)
+            ):
+                yield self._create_stream_chunk(
+                    chat_id, request.model, content=pending_buffer
+                )
 
             # Parse tool calls from accumulated text
             tool_calls = None
             finish_reason = "stop"
             if has_tools and accumulated_text:
-                tool_calls, finish_reason = self._parse_stream_tool_calls(accumulated_text)
+                tool_calls, finish_reason = self._parse_stream_tool_calls(
+                    accumulated_text
+                )
 
             # Emit final chunk with finish_reason and optional tool_calls
             yield self._create_stream_chunk(
@@ -478,7 +514,9 @@ class OpenAIAdapter:
                 if cached_tokens > 0:
                     from .schema import PromptTokensDetails
 
-                    prompt_tokens_details = PromptTokensDetails(cached_tokens=cached_tokens)
+                    prompt_tokens_details = PromptTokensDetails(
+                        cached_tokens=cached_tokens
+                    )
 
                 yield ChatCompletionChunk(
                     id=chat_id,

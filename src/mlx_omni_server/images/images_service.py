@@ -9,8 +9,8 @@ from typing import Dict, List, Tuple
 from mflux.callbacks.callback_registry import CallbackRegistry
 from mflux.callbacks.instances.memory_saver import MemorySaver
 from mflux.models.common.config.model_config import ModelConfig
-from mflux.utils.exceptions import StopImageGenerationException
 from mflux.models.flux.variants.txt2img.flux import Flux1
+from mflux.utils.exceptions import StopImageGenerationException
 from PIL import Image
 
 from ..utils.logger import logger

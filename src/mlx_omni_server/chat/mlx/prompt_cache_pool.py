@@ -4,10 +4,10 @@ Prompt Cache Pool Module
 This module provides functionality for managing PromptCache instances, avoiding concurrency issues.
 """
 
+import copy
 import time
 from dataclasses import dataclass, field
 from typing import List
-import copy
 
 from ...utils.logger import logger
 from .prompt_cache import PromptCache, common_prefix_len
@@ -20,9 +20,10 @@ class PoolEntry:
     cache: PromptCache
     last_used: float = field(default_factory=time.time)
 
+
 class PromptCachePool:
     """
-    Prompt cache pool class for managing PromptCache instances using LRU policy. 
+    Prompt cache pool class for managing PromptCache instances using LRU policy.
     """
 
     def __init__(self, max_size: int = 8, ttl_seconds: float = 300.0):
@@ -31,11 +32,11 @@ class PromptCachePool:
         self._ttl_seconds = ttl_seconds
 
     def get_cache(self, prompt_tokens: List[int], model_key: str) -> PromptCache:
-        """Check out a deepcopy of the best matching PromptCache 
+        """Check out a deepcopy of the best matching PromptCache
 
         Finds the best matching available cache by common prefix length.
         If no suitable cache exists, creates a new one (evicting the oldest
-        entry if at capacity). 
+        entry if at capacity).
 
         Args:
             prompt_tokens: The tokenized prompt for this request.
@@ -77,8 +78,7 @@ class PromptCachePool:
         )
         self._entries.append(new_entry)
         logger.debug(
-            f"Pool checkout: new cache created "
-            f"(pool size: {len(self._entries)})"
+            f"Pool checkout: new cache created " f"(pool size: {len(self._entries)})"
         )
         return new_entry.cache
 
@@ -99,22 +99,20 @@ class PromptCachePool:
             self._evict_oldest()
 
     def _evict_expired(self) -> None:
-        """Remove entries that have exceeded TTL. """
+        """Remove entries that have exceeded TTL."""
         if self._ttl_seconds <= 0:
             return
         now = time.time()
         before = len(self._entries)
         self._entries = [
-            e
-            for e in self._entries
-            if now - e.last_used <= self._ttl_seconds
+            e for e in self._entries if now - e.last_used <= self._ttl_seconds
         ]
         evicted = before - len(self._entries)
         if evicted > 0:
             logger.debug(f"Pool evicted {evicted} expired cache(s)")
 
     def _evict_oldest(self) -> None:
-        """Remove the oldest entry. """
+        """Remove the oldest entry."""
         oldest_idx = None
         oldest_time = float("inf")
         for i, entry in enumerate(self._entries):
@@ -123,9 +121,7 @@ class PromptCachePool:
                 oldest_idx = i
         if oldest_idx is not None:
             removed = self._entries.pop(oldest_idx)
-            logger.debug(
-                f"Pool evicted cache (tokens: {len(removed.cache.tokens)})"
-            )
+            logger.debug(f"Pool evicted cache (tokens: {len(removed.cache.tokens)})")
 
     def get_pool_info(self) -> dict:
         """Get pool statistics for debugging/monitoring."""

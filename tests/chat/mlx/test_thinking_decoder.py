@@ -161,9 +161,11 @@ class TestStreamThinkingRouting:
             )
         else:
             return StreamContent(
-                text_delta=parse_result.content
-                if parse_result.content is not None
-                else raw_token,
+                text_delta=(
+                    parse_result.content
+                    if parse_result.content is not None
+                    else raw_token
+                ),
                 token=0,
                 chunk_index=chunk_index,
             )
@@ -268,10 +270,10 @@ class TestStreamThinkingRouting:
         """End-to-end test: full streaming sequence produces correct routing."""
         tokens = ["<think>", "Let me ", "think.", "</think>", "\n\n", "Answer!"]
         expected = [
-            ("reasoning", ""),       # opening tag: empty reasoning delta
+            ("reasoning", ""),  # opening tag: empty reasoning delta
             ("reasoning", "Let me "),
             ("reasoning", "think."),
-            ("content", ""),         # closing tag: empty content delta
+            ("content", ""),  # closing tag: empty content delta
             ("content", "\n\n"),
             ("content", "Answer!"),
         ]

@@ -80,14 +80,18 @@ class Qwen3MoeToolParser(BaseToolParser):
             try:
                 return int(value)
             except ValueError:
-                logger.debug(f"Failed to convert '{value}' to integer for {func_name}.{param_name}")
+                logger.debug(
+                    f"Failed to convert '{value}' to integer for {func_name}.{param_name}"
+                )
                 return value
 
         if param_type == "number":
             try:
                 return float(value)
             except ValueError:
-                logger.debug(f"Failed to convert '{value}' to number for {func_name}.{param_name}")
+                logger.debug(
+                    f"Failed to convert '{value}' to number for {func_name}.{param_name}"
+                )
                 return value
 
         if param_type == "boolean":
@@ -96,14 +100,18 @@ class Qwen3MoeToolParser(BaseToolParser):
                 return True
             if lower_value == "false":
                 return False
-            logger.debug(f"Unexpected boolean value '{value}' for {func_name}.{param_name}")
+            logger.debug(
+                f"Unexpected boolean value '{value}' for {func_name}.{param_name}"
+            )
             return value
 
         if param_type in ("array", "object"):
             try:
                 return json.loads(value)
             except json.JSONDecodeError:
-                logger.debug(f"Failed to parse JSON for {func_name}.{param_name}: {value}")
+                logger.debug(
+                    f"Failed to parse JSON for {func_name}.{param_name}: {value}"
+                )
                 return value
 
         # Default: return as string
@@ -137,7 +145,9 @@ class Qwen3MoeToolParser(BaseToolParser):
             # Qwen3 models frequently emit the HuggingFace unified format, not <function=...> tags.
             parsed = extract_tools(text)
             if parsed:
-                logger.debug(f"parse_tools: extracted {len(parsed)} tool call(s) via base_tools.extract_tools")
+                logger.debug(
+                    f"parse_tools: extracted {len(parsed)} tool call(s) via base_tools.extract_tools"
+                )
                 return parsed
 
             tool_calls: List[ToolCall] = []
@@ -149,7 +159,9 @@ class Qwen3MoeToolParser(BaseToolParser):
 
             # Check if text contains tool_call markers
             if "<tool_call>" in text or "<function=" in text:
-                logger.debug("parse_tools: detected potential tool call markers in text")
+                logger.debug(
+                    "parse_tools: detected potential tool call markers in text"
+                )
             else:
                 logger.debug("parse_tools: no tool call markers found")
 
@@ -158,14 +170,18 @@ class Qwen3MoeToolParser(BaseToolParser):
             for match in matches:
                 function_name = match.group(1).strip()
                 function_content = match.group(2)
-                logger.debug(f"parse_tools: found function match - name='{function_name}'")
+                logger.debug(
+                    f"parse_tools: found function match - name='{function_name}'"
+                )
 
                 if not function_name:
                     continue
 
                 # Extract parameters from the function content
                 arguments = self._extract_parameters(function_content, function_name)
-                logger.debug(f"parse_tools: extracted arguments for {function_name}: {arguments}")
+                logger.debug(
+                    f"parse_tools: extracted arguments for {function_name}: {arguments}"
+                )
 
                 # Create ToolCall object
                 tool_call = ToolCall(
@@ -176,7 +192,9 @@ class Qwen3MoeToolParser(BaseToolParser):
                 tool_calls.append(tool_call)
 
             if tool_calls:
-                logger.debug(f"parse_tools: successfully parsed {len(tool_calls)} tool call(s)")
+                logger.debug(
+                    f"parse_tools: successfully parsed {len(tool_calls)} tool call(s)"
+                )
             else:
                 logger.debug("parse_tools: no tool calls extracted from text")
 

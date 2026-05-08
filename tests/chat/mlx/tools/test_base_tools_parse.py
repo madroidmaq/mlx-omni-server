@@ -74,7 +74,7 @@ This JSON represents a function call to `get_current_weather` with the location 
 
     def test_malformed_tool_call_block_returns_none(self):
         # Malformed <tool_call> block should return None, not fall back to regex
-        text = '<tool_call>\n{not valid json at all\n</tool_call>'
+        text = "<tool_call>\n{not valid json at all\n</tool_call>"
         tools = extract_tools(text)
         self.assertIsNone(tools)
 

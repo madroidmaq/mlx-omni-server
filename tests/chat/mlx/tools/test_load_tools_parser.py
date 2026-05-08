@@ -1,11 +1,9 @@
-import pytest
-
 from mlx_omni_server.chat.mlx.tools.chat_template import load_tools_parser
+from mlx_omni_server.chat.mlx.tools.glm45_tools_parser import GLM45ToolParser
 from mlx_omni_server.chat.mlx.tools.hugging_face import HuggingFaceToolParser
 from mlx_omni_server.chat.mlx.tools.llama3 import Llama3ToolParser
 from mlx_omni_server.chat.mlx.tools.mistral import MistralToolsParser
 from mlx_omni_server.chat.mlx.tools.qwen3_moe_tools_parser import Qwen3MoeToolParser
-from mlx_omni_server.chat.mlx.tools.glm45_tools_parser import GLM45ToolParser
 
 
 class TestLoadToolsParser:

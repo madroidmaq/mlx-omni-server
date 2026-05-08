@@ -26,6 +26,7 @@ def get_models_service() -> AnthropicModelsService:
         _models_service = AnthropicModelsService()
     return _models_service
 
+
 # Legacy caching variables removed - now using shared wrapper_cache
 # This eliminates duplicate caching logic and enables sharing between endpoints
 

@@ -270,9 +270,7 @@ class GLM45ToolParser(BaseToolParser):
 
         # Pattern to match <arg_key>name</arg_key> followed by <arg_value>value</arg_value>
         # Using non-greedy matching with DOTALL for multiline values
-        pair_pattern = (
-            r"<arg_key>\s*(.*?)\s*</arg_key>\s*<arg_value>(.*?)</arg_value>"
-        )
+        pair_pattern = r"<arg_key>\s*(.*?)\s*</arg_key>\s*<arg_value>(.*?)</arg_value>"
         pair_matches = re.finditer(pair_pattern, content, re.DOTALL)
 
         for match in pair_matches:

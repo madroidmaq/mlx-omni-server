@@ -341,25 +341,27 @@ class TestQwen3_5ToolParserIntegration(unittest.TestCase):
     def setUp(self):
         self.tools_parser = Qwen3MoeToolParser()
         # Set schema matching the get_weather tool used in real testing
-        self.tools_parser.set_tools_schema([
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "description": "Get the current weather in a given location",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "location": {
-                                "type": "string",
-                                "description": "The city name",
-                            }
+        self.tools_parser.set_tools_schema(
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "description": "Get the current weather in a given location",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "location": {
+                                    "type": "string",
+                                    "description": "The city name",
+                                }
+                            },
+                            "required": ["location"],
                         },
-                        "required": ["location"],
                     },
-                },
-            }
-        ])
+                }
+            ]
+        )
 
     def test_qwen3_5_single_tool_call(self):
         """Parse a single tool call as produced by Qwen3.5-0.8B-4bit."""
@@ -423,32 +425,34 @@ class TestQwen3_5ToolParserIntegration(unittest.TestCase):
 
     def test_qwen3_5_multiple_tool_calls(self):
         """Parse multiple tool calls from Qwen3.5 output."""
-        self.tools_parser.set_tools_schema([
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_weather",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "location": {"type": "string"},
+        self.tools_parser.set_tools_schema(
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "location": {"type": "string"},
+                            },
                         },
                     },
                 },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_time",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "timezone": {"type": "string"},
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_time",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "timezone": {"type": "string"},
+                            },
                         },
                     },
                 },
-            },
-        ])
+            ]
+        )
 
         text = (
             "<tool_call>\n"
@@ -477,22 +481,24 @@ class TestQwen3_5ToolParserIntegration(unittest.TestCase):
 
     def test_qwen3_5_tool_call_with_type_conversion(self):
         """Qwen3.5 XML parameters should be type-converted via schema."""
-        self.tools_parser.set_tools_schema([
-            {
-                "type": "function",
-                "function": {
-                    "name": "search",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {"type": "string"},
-                            "limit": {"type": "integer"},
-                            "include_meta": {"type": "boolean"},
+        self.tools_parser.set_tools_schema(
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string"},
+                                "limit": {"type": "integer"},
+                                "include_meta": {"type": "boolean"},
+                            },
                         },
                     },
-                },
-            }
-        ])
+                }
+            ]
+        )
 
         text = (
             "<tool_call>\n"
