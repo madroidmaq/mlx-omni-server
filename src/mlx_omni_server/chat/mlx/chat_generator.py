@@ -1,5 +1,6 @@
 """Chat Generator - Core abstraction layer over mlx-lm for chat completions."""
 
+import json
 import time
 from typing import Any, Callable, Dict, Generator, List, Optional, Union
 
@@ -156,6 +157,49 @@ class ChatGenerator:
         """Check if this wrapper has a draft model for speculative decoding."""
         return self.model.has_draft_model()
 
+    @staticmethod
+    def _split_text_before_json(text: str) -> tuple[str | None, str | None]:
+        stripped = text.strip()
+        for index, char in enumerate(stripped):
+            if char not in "[{":
+                continue
+            try:
+                json.loads(stripped[index:])
+            except json.JSONDecodeError:
+                continue
+            prefix = stripped[:index].strip()
+            return (prefix or None, stripped[index:].strip())
+        return None, None
+
+    @classmethod
+    def _merge_streamed_content(
+        cls,
+        chat_result,
+        streamed_text: str,
+        streamed_reasoning: str,
+        json_schema: Optional[Any] = None,
+    ) -> tuple[str, str | None]:
+        content = chat_result.content
+        reasoning = chat_result.thinking
+
+        if json_schema is not None:
+            fallback_reasoning, fallback_content = cls._split_text_before_json(content)
+            if fallback_content is None and streamed_reasoning and not streamed_text:
+                fallback_reasoning, fallback_content = cls._split_text_before_json(
+                    streamed_reasoning
+                )
+            if fallback_content is not None:
+                content = fallback_content
+                if not reasoning:
+                    reasoning = fallback_reasoning
+
+        if streamed_reasoning and not reasoning:
+            reasoning = streamed_reasoning.strip() or None
+            if streamed_text and not chat_result.tool_calls:
+                content = streamed_text.strip()
+
+        return content, reasoning
+
     def _prepare_prompt(
         self,
         messages: List[Dict[str, Any]],
@@ -188,7 +232,9 @@ class ChatGenerator:
         # Keep enable_thinking in template_kwargs so it gets forwarded to the
         # tokenizer's apply_chat_template (e.g. Qwen3 uses it to suppress <think>).
         if "enable_thinking" in template_kwargs:
-            template_kwargs["enable_thinking_parse"] = template_kwargs["enable_thinking"]
+            template_kwargs["enable_thinking_parse"] = template_kwargs[
+                "enable_thinking"
+            ]
 
         prompt = self.chat_template.apply_chat_template(
             messages=messages,
@@ -314,13 +360,13 @@ class ChatGenerator:
         """
         try:
             # Check if we need to use mlx_vlm for VLM-only models
-            if getattr(self.model, 'is_vlm_model', False):
+            if getattr(self.model, "is_vlm_model", False):
                 from mlx_vlm import generate as vlm_generate
-                
+
                 # Extract images and audio from messages for VLM
                 images_list = []
                 audios_list = []
-                
+
                 for msg in messages:
                     if isinstance(msg.get("content"), list):
                         for item in msg["content"]:
@@ -348,7 +394,7 @@ class ChatGenerator:
                                         url = str(audio_url)
                                     if url:
                                         audios_list.append(url)
-                
+
                 # For VLM models, use mlx_vlm's generate directly
                 vlm_template_kwargs = dict(template_kwargs or {})
                 vlm_template_kwargs.setdefault("num_images", len(images_list))
@@ -362,7 +408,7 @@ class ChatGenerator:
                     max_tokens=max_tokens,
                     **kwargs,
                 )
-                
+
                 # Pass images and audio to VLM generate
                 result = vlm_generate(
                     model=self.model.model.model,  # Unwrap VLM model
@@ -372,24 +418,26 @@ class ChatGenerator:
                     audio=audios_list if audios_list else None,
                     **mlx_kwargs,
                 )
-                
+
                 # Extract text from result
-                complete_raw_text = result.text if hasattr(result, 'text') else str(result)
-                
+                complete_raw_text = (
+                    result.text if hasattr(result, "text") else str(result)
+                )
+
                 # Create stats similar to stream results
                 stats = GenerationStats(
-                    prompt_tokens=getattr(result, 'prompt_tokens', 0),
-                    completion_tokens=getattr(result, 'generation_tokens', 0),
-                    prompt_tps=getattr(result, 'prompt_tps', 0.0),
-                    generation_tps=getattr(result, 'generation_tps', 0.0),
-                    peak_memory=getattr(result, 'peak_memory', 0.0),
+                    prompt_tokens=getattr(result, "prompt_tokens", 0),
+                    completion_tokens=getattr(result, "generation_tokens", 0),
+                    prompt_tps=getattr(result, "prompt_tps", 0.0),
+                    generation_tps=getattr(result, "generation_tps", 0.0),
+                    peak_memory=getattr(result, "peak_memory", 0.0),
                     cache_hit_tokens=0,
                     time_to_first_token=0.0,
                 )
-                
+
                 # Parse the response
                 chat_result = self.chat_template.parse_chat_response(complete_raw_text)
-                
+
                 # Create CompletionContent
                 content = CompletionContent(
                     text=chat_result.content,
@@ -398,7 +446,7 @@ class ChatGenerator:
                     text_tokens=[],  # Empty list for VLM (not collected from streaming)
                     reasoning_tokens=None,
                 )
-                
+
                 # Return result
                 return GenerationResult(
                     content=content,
@@ -407,10 +455,12 @@ class ChatGenerator:
                     logprobs=None,
                     from_draft=False,
                 )
-            
+
             # Standard generation for non-VLM models
             # Generate complete response by collecting stream.
             complete_raw_text = ""
+            streamed_text = ""
+            streamed_reasoning = ""
             final_stream_result = None
             all_text_tokens = []
             all_reasoning_tokens = []
@@ -428,10 +478,12 @@ class ChatGenerator:
                 # Collect deltas to reconstruct complete content
                 if stream_result.content.text_delta:
                     complete_raw_text += stream_result.content.text_delta
+                    streamed_text += stream_result.content.text_delta
                     all_text_tokens.append(stream_result.content.token)
                 elif stream_result.content.reasoning_delta:
                     # Reasoning tokens should also be included in complete_raw_text
                     complete_raw_text += stream_result.content.reasoning_delta
+                    streamed_reasoning += stream_result.content.reasoning_delta
                     all_reasoning_tokens.append(stream_result.content.token)
 
                 final_stream_result = stream_result
@@ -441,6 +493,12 @@ class ChatGenerator:
 
             logger.info(f"Model Response:\n{complete_raw_text}")
             chat_result = self.chat_template.parse_chat_response(complete_raw_text)
+            content_text, reasoning_text = self._merge_streamed_content(
+                chat_result,
+                streamed_text=streamed_text,
+                streamed_reasoning=streamed_reasoning,
+                json_schema=kwargs.get("json_schema"),
+            )
 
             # Determine appropriate finish_reason
             finish_reason = final_stream_result.finish_reason
@@ -449,8 +507,8 @@ class ChatGenerator:
 
             # Create CompletionContent with complete data
             content = CompletionContent(
-                text=chat_result.content,
-                reasoning=chat_result.thinking,
+                text=content_text,
+                reasoning=reasoning_text,
                 tool_calls=chat_result.tool_calls,
                 text_tokens=all_text_tokens,
                 reasoning_tokens=all_reasoning_tokens if all_reasoning_tokens else None,
@@ -508,7 +566,7 @@ class ChatGenerator:
 
         try:
             # Check if we need to use mlx_vlm for VLM-only models
-            if getattr(self.model, 'is_vlm_model', False):
+            if getattr(self.model, "is_vlm_model", False):
                 raise NotImplementedError(
                     "Streaming is not yet supported for VLM-only models (like Gemma 4). "
                     "Please use the non-streaming generate() method instead."
