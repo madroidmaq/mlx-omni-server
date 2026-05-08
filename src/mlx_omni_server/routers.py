@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .chat.anthropic import router as anthropic_router
+from .chat.openai import cache_router
 from .chat.openai import router as chat_router
 from .chat.openai.models import models
 from .embeddings import router as embeddings_router
@@ -13,6 +14,7 @@ api_router.include_router(stt_router.router)
 api_router.include_router(tts_router.router)
 api_router.include_router(models.router)
 api_router.include_router(images.router)
+api_router.include_router(cache_router.router)
 api_router.include_router(chat_router.router)
 api_router.include_router(embeddings_router.router)
 api_router.include_router(anthropic_router.router, prefix="/anthropic")

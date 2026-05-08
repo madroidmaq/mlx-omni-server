@@ -4,6 +4,12 @@ import os
 import uvicorn
 from fastapi import FastAPI
 
+from .chat.mlx.wrapper_cache import (
+    MODEL_CACHE_SIZE_ENV,
+    MODEL_CACHE_TTL_ENV,
+    get_model_cache_config_from_env,
+    wrapper_cache,
+)
 from .middleware.logging import RequestResponseLoggingMiddleware
 from .routers import api_router
 from .utils.logger import logger, set_logger_level
@@ -48,6 +54,20 @@ def build_parser():
         default="info",
         choices=["debug", "info", "warning", "error", "critical"],
         help="Set the logging level, defaults to info",
+    )
+
+    default_cache_size, default_cache_ttl = get_model_cache_config_from_env()
+    parser.add_argument(
+        "--model-cache-size",
+        type=int,
+        default=default_cache_size,
+        help=f"Maximum ChatGenerator wrappers to cache, defaults to {default_cache_size}",
+    )
+    parser.add_argument(
+        "--model-cache-ttl",
+        type=int,
+        default=default_cache_ttl,
+        help=f"Seconds before unused ChatGenerator wrappers expire, defaults to {default_cache_ttl}",
     )
 
     parser.add_argument(
@@ -97,9 +117,20 @@ def start():
     os.environ["MLX_OMNI_LOG_LEVEL"] = args.log_level
     # Set CORS through environment variable
     os.environ["MLX_OMNI_CORS"] = args.cors_allow_origins
+    os.environ[MODEL_CACHE_SIZE_ENV] = str(args.model_cache_size)
+    os.environ[MODEL_CACHE_TTL_ENV] = str(args.model_cache_ttl)
 
     set_logger_level(logger, args.log_level)
     configure_cors_middleware(args.cors_allow_origins)
+    wrapper_cache.configure(args.model_cache_size, args.model_cache_ttl)
+
+    if args.workers > 1:
+        logger.warning(
+            "Running with %s workers. Each worker process maintains its own "
+            "independent model cache, so model memory usage may scale up to "
+            "the worker count.",
+            args.workers,
+        )
 
     # Start server with uvicorn
     uvicorn.run(

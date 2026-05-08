@@ -5,14 +5,70 @@ to avoid expensive model reloading when the same model configuration is used
 across different API endpoints.
 """
 
+import gc
+import os
 import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from ...utils.logger import logger
 from .chat_generator import ChatGenerator
+
+DEFAULT_MODEL_CACHE_SIZE = 1
+DEFAULT_MODEL_CACHE_TTL_SECONDS = 300
+MODEL_CACHE_SIZE_ENV = "MLX_OMNI_MODEL_CACHE_SIZE"
+MODEL_CACHE_TTL_ENV = "MLX_OMNI_MODEL_CACHE_TTL"
+
+
+def parse_non_negative_int(value: str | int, name: str) -> int:
+    """Parse a non-negative integer config value."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a non-negative integer") from exc
+
+    if parsed < 0:
+        raise ValueError(f"{name} must be a non-negative integer")
+    return parsed
+
+
+def get_model_cache_config_from_env(
+    environ: dict[str, str] | None = None
+) -> tuple[int, int]:
+    """Read model cache configuration from environment variables."""
+    environ = os.environ if environ is None else environ
+    max_size = parse_non_negative_int(
+        environ.get(MODEL_CACHE_SIZE_ENV, DEFAULT_MODEL_CACHE_SIZE),
+        MODEL_CACHE_SIZE_ENV,
+    )
+    ttl_seconds = parse_non_negative_int(
+        environ.get(MODEL_CACHE_TTL_ENV, DEFAULT_MODEL_CACHE_TTL_SECONDS),
+        MODEL_CACHE_TTL_ENV,
+    )
+    return max_size, ttl_seconds
+
+
+def clear_mlx_memory() -> None:
+    """Run best-effort Python and MLX memory cleanup."""
+    gc.collect()
+
+    try:
+        import mlx.metal as metal
+    except ModuleNotFoundError:
+        logger.debug("mlx.metal is not available; skipped MLX cache cleanup")
+        return
+    except Exception as e:
+        logger.warning(f"Failed to import mlx.metal for cache cleanup: {e}")
+        return
+
+    try:
+        clear_cache = getattr(metal, "clear_cache", None)
+        if clear_cache is not None:
+            clear_cache()
+    except Exception as e:
+        logger.warning(f"Failed to clear MLX metal cache: {e}")
 
 
 @dataclass(frozen=True)
@@ -40,39 +96,61 @@ class MLXWrapperCache:
     """
 
     def __init__(
-        self, max_size: int = 3, ttl_seconds: int = 300, cleanup_interval: int = 5
+        self,
+        max_size: int = DEFAULT_MODEL_CACHE_SIZE,
+        ttl_seconds: int = DEFAULT_MODEL_CACHE_TTL_SECONDS,
+        cleanup_interval: int = 5,
     ):
         """Initialize cache with LRU eviction and TTL support.
 
         Args:
-            max_size: Maximum number of models to cache (default: 3)
+            max_size: Maximum number of models to cache.
             ttl_seconds: Time to live in seconds, after which unused models
-                        are evicted from cache (default: 300 seconds = 5 minutes)
-            cleanup_interval: Interval in seconds for background cleanup (default: 5 seconds)
+                        are evicted from cache.
+            cleanup_interval: Interval in seconds for background cleanup.
         """
         self._cache: OrderedDict[WrapperCacheKey, ChatGenerator] = OrderedDict()
         self._access_times: Dict[WrapperCacheKey, float] = {}
         self._lock = threading.Lock()
-        self._max_size = max_size
-        self._ttl_seconds = ttl_seconds
+        self._load_lock = threading.Lock()
+        self._max_size = parse_non_negative_int(max_size, "max_size")
+        self._ttl_seconds = parse_non_negative_int(ttl_seconds, "ttl_seconds")
         self._cleanup_interval = cleanup_interval
         self._stop_event = threading.Event()
         self._cleanup_thread = None
 
-        # Start background cleanup thread if TTL is enabled
         if self._ttl_seconds > 0:
             self._cleanup_thread = threading.Thread(
                 target=self._periodic_cleanup, daemon=True
             )
             self._cleanup_thread.start()
 
-    def _evict_expired_items(self) -> None:
-        """Evict items that have exceeded their TTL.
+    def _release_evicted_items(
+        self, evicted_items: list[tuple[WrapperCacheKey, ChatGenerator]]
+    ) -> None:
+        """Release cache-owned references after wrappers leave the cache."""
+        if not evicted_items:
+            return
+        evicted_items.clear()
+        clear_mlx_memory()
 
-        This method should be called while holding the lock.
-        """
+    def _pop_lru_locked(self) -> tuple[WrapperCacheKey, ChatGenerator] | None:
+        if not self._cache:
+            return None
+        lru_key = min(self._access_times.keys(), key=lambda k: self._access_times[k])
+        wrapper = self._cache.pop(lru_key, None)
+        self._access_times.pop(lru_key, None)
+        logger.info(f"Evicted LRU model from cache: {lru_key}")
+        if wrapper is None:
+            return None
+        return lru_key, wrapper
+
+    def _evict_expired_items_locked(
+        self,
+    ) -> list[tuple[WrapperCacheKey, ChatGenerator]]:
+        """Evict items that have exceeded their TTL while holding the lock."""
         if self._ttl_seconds <= 0:
-            return  # TTL disabled
+            return []
 
         current_time = time.time()
         expired_keys = []
@@ -81,33 +159,36 @@ class MLXWrapperCache:
             if current_time - access_time > self._ttl_seconds:
                 expired_keys.append(key)
 
+        evicted_items = []
         for key in expired_keys:
-            self._cache.pop(key, None)
+            wrapper = self._cache.pop(key, None)
             self._access_times.pop(key, None)
+            if wrapper is not None:
+                evicted_items.append((key, wrapper))
             logger.info(
                 f"Evicted expired model from cache (TTL={self._ttl_seconds}s): {key}"
             )
 
-    def _evict_lru_if_needed(self) -> None:
-        """Evict least recently used item if cache is at capacity.
+        return evicted_items
 
-        This method should be called while holding the lock.
-        """
-        if len(self._cache) >= self._max_size and self._max_size > 0:
-            # Find the least recently used key
-            lru_key = min(
-                self._access_times.keys(), key=lambda k: self._access_times[k]
-            )
+    def _evict_lru_for_new_item_locked(
+        self,
+    ) -> list[tuple[WrapperCacheKey, ChatGenerator]]:
+        """Evict one LRU item if needed before adding a new cache entry."""
+        if self._max_size <= 0 or len(self._cache) < self._max_size:
+            return []
+        item = self._pop_lru_locked()
+        return [item] if item is not None else []
 
-            # Remove from cache and access times
-            self._cache.pop(lru_key, None)
-            self._access_times.pop(lru_key, None)
-
-            logger.info(f"Evicted LRU model from cache: {lru_key}")
-
-            # Optional: Clean up the evicted wrapper's resources
-            # This could include clearing VRAM, etc., but ChatGenerator
-            # doesn't currently expose cleanup methods
+    def _shrink_to_max_size_locked(self) -> list[tuple[WrapperCacheKey, ChatGenerator]]:
+        """Evict cached entries until cache_size <= max_size."""
+        evicted_items = []
+        while len(self._cache) > self._max_size:
+            item = self._pop_lru_locked()
+            if item is None:
+                break
+            evicted_items.append(item)
+        return evicted_items
 
     def _update_access_time(self, key: WrapperCacheKey) -> None:
         """Update access time for LRU tracking.
@@ -124,7 +205,8 @@ class MLXWrapperCache:
         while not self._stop_event.wait(self._cleanup_interval):
             try:
                 with self._lock:
-                    self._evict_expired_items()
+                    evicted_items = self._evict_expired_items_locked()
+                self._release_evicted_items(evicted_items)
             except Exception as e:
                 logger.error(f"Error in periodic cleanup: {e}")
 
@@ -135,6 +217,16 @@ class MLXWrapperCache:
             self._cleanup_thread.join(timeout=1.0)
             self._cleanup_thread = None
             logger.info("Background cleanup thread stopped")
+
+    def _get_cached_wrapper(self, key: WrapperCacheKey) -> ChatGenerator | None:
+        with self._lock:
+            evicted_items = self._evict_expired_items_locked()
+            wrapper = self._cache.get(key)
+            if wrapper is not None:
+                self._update_access_time(key)
+                logger.debug(f"Cache hit for ChatGenerator: {key}")
+        self._release_evicted_items(evicted_items)
+        return wrapper
 
     def get_wrapper(
         self,
@@ -162,33 +254,29 @@ class MLXWrapperCache:
             draft_model_id=draft_model_id,
         )
 
-        # Double-checked locking pattern for performance
-        if key in self._cache:
+        wrapper = self._get_cached_wrapper(key)
+        if wrapper is not None:
+            return wrapper
+
+        with self._load_lock:
+            wrapper = self._get_cached_wrapper(key)
+            if wrapper is not None:
+                return wrapper
+
             with self._lock:
-                # Evict expired items before checking cache
-                self._evict_expired_items()
-
-                # Check if key still exists after expiry cleanup
+                evicted_items = self._evict_expired_items_locked()
                 if key in self._cache:
-                    # Update access time for LRU and TTL
                     self._update_access_time(key)
-                    logger.debug(f"Cache hit for ChatGenerator: {key}")
-                    return self._cache[key]
+                    wrapper = self._cache[key]
+                else:
+                    evicted_items.extend(self._evict_lru_for_new_item_locked())
+                    wrapper = None
+            self._release_evicted_items(evicted_items)
 
-        with self._lock:
-            # Evict expired items first
-            self._evict_expired_items()
+            if wrapper is not None:
+                logger.debug(f"Cache hit (after load lock) for ChatGenerator: {key}")
+                return wrapper
 
-            # Check again inside lock in case another thread created it
-            if key in self._cache:
-                self._update_access_time(key)
-                logger.debug(f"Cache hit (after lock) for ChatGenerator: {key}")
-                return self._cache[key]
-
-            # Cache miss - evict LRU if needed before creating new wrapper
-            self._evict_lru_if_needed()
-
-            # Create new wrapper
             logger.info(f"Creating new ChatGenerator for: {key}")
             try:
                 wrapper = ChatGenerator.create(
@@ -196,9 +284,14 @@ class MLXWrapperCache:
                     adapter_path=adapter_path,
                     draft_model_id=draft_model_id,
                 )
+            except Exception as e:
+                logger.error(f"Failed to create ChatGenerator for {key}: {e}")
+                raise
 
-                # Only cache if max_size > 0
+            with self._lock:
+                evicted_items = []
                 if self._max_size > 0:
+                    evicted_items = self._evict_lru_for_new_item_locked()
                     self._cache[key] = wrapper
                     self._update_access_time(key)
                     logger.info(
@@ -208,11 +301,8 @@ class MLXWrapperCache:
                     logger.info(
                         f"Created ChatGenerator but not cached (max_size=0): {key}"
                     )
-
-                return wrapper
-            except Exception as e:
-                logger.error(f"Failed to create ChatGenerator for {key}: {e}")
-                raise
+            self._release_evicted_items(evicted_items)
+            return wrapper
 
     def cleanup_expired_items(self) -> int:
         """Manually trigger cleanup of expired items.
@@ -224,45 +314,47 @@ class MLXWrapperCache:
             Number of items that were evicted
         """
         with self._lock:
-            initial_size = len(self._cache)
-            self._evict_expired_items()
-            evicted_count = initial_size - len(self._cache)
+            evicted_items = self._evict_expired_items_locked()
+        evicted_count = len(evicted_items)
+        self._release_evicted_items(evicted_items)
 
-            if evicted_count > 0:
-                logger.info(f"Manual cleanup evicted {evicted_count} expired items")
+        if evicted_count > 0:
+            logger.info(f"Manual cleanup evicted {evicted_count} expired items")
 
-            return evicted_count
+        return evicted_count
 
-    def clear_cache(self) -> None:
+    def clear_cache(self) -> int:
         """Clear all cached wrapper instances.
 
         This can be useful for memory management or testing purposes.
-        """
-        # Stop the cleanup thread first
-        self._stop_cleanup_thread()
 
+        Returns:
+            Number of cached wrappers that were cleared.
+        """
         with self._lock:
-            cache_size = len(self._cache)
+            items = list(self._cache.items())
             self._cache.clear()
             self._access_times.clear()
-            logger.info(f"Cleared ChatGenerator cache ({cache_size} entries)")
 
-    def get_cache_info(self) -> Dict[str, any]:
+        cache_size = len(items)
+        self._release_evicted_items(items)
+        logger.info(f"Cleared ChatGenerator cache ({cache_size} entries)")
+        return cache_size
+
+    def get_cache_info(self) -> Dict[str, Any]:
         """Get cache statistics.
 
         Returns:
             Dictionary with cache statistics including LRU and TTL information
         """
         with self._lock:
-            # Clean up expired items first to get accurate stats
-            self._evict_expired_items()
+            evicted_items = self._evict_expired_items_locked()
 
             current_time = time.time()
             sorted_keys = sorted(
                 self._access_times.items(), key=lambda x: x[1], reverse=True
             )
 
-            # Calculate TTL remaining for each item
             ttl_info = []
             if self._ttl_seconds > 0:
                 for key, access_time in sorted_keys:
@@ -275,14 +367,17 @@ class MLXWrapperCache:
                         }
                     )
 
-            return {
+            cache_info = {
                 "cache_size": len(self._cache),
                 "max_size": self._max_size,
                 "ttl_seconds": self._ttl_seconds,
                 "cached_keys": [str(key) for key in self._cache.keys()],
-                "lru_order": [str(key) for key, _ in sorted_keys],  # Most recent first
+                "lru_order": [str(key) for key, _ in sorted_keys],
                 "ttl_info": ttl_info,
             }
+
+        self._release_evicted_items(evicted_items)
+        return cache_info
 
     def set_max_size(self, max_size: int) -> None:
         """Update the maximum cache size.
@@ -294,22 +389,45 @@ class MLXWrapperCache:
             If the new size is smaller than current cache size,
             LRU items will be evicted immediately.
         """
+        max_size = parse_non_negative_int(max_size, "max_size")
         with self._lock:
             self._max_size = max_size
+            evicted_items = self._shrink_to_max_size_locked()
+            current_size = len(self._cache)
+        self._release_evicted_items(evicted_items)
+        logger.info(
+            f"Updated cache max_size to {max_size}, current size: {current_size}"
+        )
 
-            # Evict items if current cache exceeds new limit
-            while len(self._cache) > self._max_size:
-                self._evict_lru_if_needed()
+    def set_ttl_seconds(self, ttl_seconds: int) -> None:
+        """Update cache TTL seconds."""
+        ttl_seconds = parse_non_negative_int(ttl_seconds, "ttl_seconds")
+        stop_cleanup_thread = False
+        with self._lock:
+            self._ttl_seconds = ttl_seconds
 
-            logger.info(
-                f"Updated cache max_size to {max_size}, current size: {len(self._cache)}"
-            )
+            if self._ttl_seconds > 0 and self._cleanup_thread is None:
+                self._stop_event.clear()
+                self._cleanup_thread = threading.Thread(
+                    target=self._periodic_cleanup, daemon=True
+                )
+                self._cleanup_thread.start()
+            elif self._ttl_seconds <= 0:
+                stop_cleanup_thread = True
+
+            logger.info(f"Updated cache ttl_seconds to {ttl_seconds}")
+
+        if stop_cleanup_thread:
+            self._stop_cleanup_thread()
+
+    def configure(self, max_size: int, ttl_seconds: int) -> None:
+        """Update cache max size and TTL."""
+        self.set_max_size(max_size)
+        self.set_ttl_seconds(ttl_seconds)
 
     def __del__(self) -> None:
         """Destructor to ensure cleanup thread is stopped."""
         self._stop_cleanup_thread()
 
 
-# Global cache instance - shared across all API endpoints
-# Default to 3 models with 5-minute TTL as suggested by user requirements
-wrapper_cache = MLXWrapperCache(max_size=3, ttl_seconds=300)
+wrapper_cache = MLXWrapperCache(*get_model_cache_config_from_env())

@@ -10,7 +10,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from mlx_omni_server.chat.mlx.wrapper_cache import MLXWrapperCache, WrapperCacheKey
+from mlx_omni_server.chat.mlx.wrapper_cache import (
+    MLXWrapperCache,
+    WrapperCacheKey,
+    get_model_cache_config_from_env,
+)
 
 
 class MockChatGenerator:
@@ -22,6 +26,30 @@ class MockChatGenerator:
 
     def __str__(self):
         return f"MockWrapper({self.model_id})"
+
+
+class TestWrapperCacheConfig:
+    """Test wrapper cache configuration parsing."""
+
+    def test_env_config_defaults(self):
+        """Missing environment variables should use conservative defaults."""
+        assert get_model_cache_config_from_env({}) == (1, 300)
+
+    def test_env_config_values(self):
+        """Environment variables should be parsed as integers."""
+        environ = {
+            "MLX_OMNI_MODEL_CACHE_SIZE": "2",
+            "MLX_OMNI_MODEL_CACHE_TTL": "60",
+        }
+        assert get_model_cache_config_from_env(environ) == (2, 60)
+
+    def test_env_config_rejects_invalid_values(self):
+        """Invalid environment values should fail early."""
+        with pytest.raises(ValueError, match="MLX_OMNI_MODEL_CACHE_SIZE"):
+            get_model_cache_config_from_env({"MLX_OMNI_MODEL_CACHE_SIZE": "bad"})
+
+        with pytest.raises(ValueError, match="MLX_OMNI_MODEL_CACHE_TTL"):
+            get_model_cache_config_from_env({"MLX_OMNI_MODEL_CACHE_TTL": "-1"})
 
 
 class TestWrapperCacheKey:
@@ -108,6 +136,43 @@ class TestMLXWrapperCache:
         assert "adapter" in updated_info["lru_order"][0]
 
     @patch("mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create")
+    def test_lru_eviction_releases_cache_reference(self, mock_create):
+        """LRU eviction should run best-effort memory cleanup."""
+        mock_create.side_effect = [
+            MockChatGenerator("model1"),
+            MockChatGenerator("model2"),
+        ]
+        cache = MLXWrapperCache(max_size=1, ttl_seconds=0)
+
+        with patch(
+            "mlx_omni_server.chat.mlx.wrapper_cache.clear_mlx_memory"
+        ) as cleanup:
+            cache.get_wrapper("model1")
+            cache.get_wrapper("model2")
+
+        cleanup.assert_called_once_with()
+
+    @patch("mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create")
+    def test_clear_cache_returns_count_and_releases_references(self, mock_create):
+        """clear_cache should clear cached entries and report how many were removed."""
+        mock_create.side_effect = [
+            MockChatGenerator("model1"),
+            MockChatGenerator("model2"),
+        ]
+
+        self.cache.get_wrapper("model1")
+        self.cache.get_wrapper("model2")
+
+        with patch(
+            "mlx_omni_server.chat.mlx.wrapper_cache.clear_mlx_memory"
+        ) as cleanup:
+            cleared_count = self.cache.clear_cache()
+
+        assert cleared_count == 2
+        cleanup.assert_called_once_with()
+        assert self.cache.get_cache_info()["cache_size"] == 0
+
+    @patch("mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create")
     def test_cache_management(self, mock_create):
         """Test cache size changes, clearing, and error handling."""
         mock_create.side_effect = [
@@ -151,6 +216,79 @@ class TestMLXWrapperCacheThreadSafety:
         time.sleep(0.01)  # Small delay to increase chance of race conditions
         self.creation_count += 1
         return MockChatGenerator(f"{model_id}_{self.creation_count}")
+
+    def test_concurrent_same_model_creates_once(self):
+        """Test concurrent requests for one key only create one wrapper."""
+        create_started = threading.Event()
+        release_create = threading.Event()
+        create_count = 0
+        create_count_lock = threading.Lock()
+
+        def slow_create(model_id, **kwargs):
+            nonlocal create_count
+            with create_count_lock:
+                create_count += 1
+            create_started.set()
+            assert release_create.wait(timeout=1)
+            return MockChatGenerator(model_id)
+
+        with patch(
+            "mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create",
+            side_effect=slow_create,
+        ):
+            threads = [
+                threading.Thread(target=lambda: self.cache.get_wrapper("same_model"))
+                for _ in range(3)
+            ]
+            for thread in threads:
+                thread.start()
+
+            assert create_started.wait(timeout=1)
+            time.sleep(0.05)
+            release_create.set()
+
+            for thread in threads:
+                thread.join(timeout=1)
+                assert not thread.is_alive()
+
+        assert create_count == 1
+
+    def test_concurrent_different_models_do_not_create_in_parallel(self):
+        """Test different keys serialize ChatGenerator.create calls."""
+        active_creates = 0
+        max_active_creates = 0
+        create_count = 0
+        create_lock = threading.Lock()
+
+        def slow_create(model_id, **kwargs):
+            nonlocal active_creates, max_active_creates, create_count
+            with create_lock:
+                active_creates += 1
+                create_count += 1
+                max_active_creates = max(max_active_creates, active_creates)
+            time.sleep(0.05)
+            with create_lock:
+                active_creates -= 1
+            return MockChatGenerator(model_id)
+
+        with patch(
+            "mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create",
+            side_effect=slow_create,
+        ):
+            threads = [
+                threading.Thread(
+                    target=lambda i=i: self.cache.get_wrapper(f"model_{i}")
+                )
+                for i in range(3)
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=1)
+                assert not thread.is_alive()
+
+        assert create_count == 3
+        assert max_active_creates == 1
 
     def test_concurrent_access(self):
         """Test concurrent access for same and different cache keys."""
@@ -255,9 +393,11 @@ class TestMLXWrapperCacheTTL:
 
         # Test manual cleanup
         self.cache.get_wrapper("model1")
-        time.sleep(0.5)
         self.cache.get_wrapper("model2")
-        time.sleep(0.8)  # model1 should be expired
+        with self.cache._lock:
+            current_time = time.time()
+            self.cache._access_times[WrapperCacheKey("model1")] = current_time - 2
+            self.cache._access_times[WrapperCacheKey("model2")] = current_time
 
         evicted_count = self.cache.cleanup_expired_items()
         assert evicted_count == 1
@@ -266,7 +406,7 @@ class TestMLXWrapperCacheTTL:
         assert any("model2" in key for key in info["cached_keys"])
 
         # Test TTL + LRU interaction
-        ttl_lru_cache = MLXWrapperCache(max_size=2, ttl_seconds=0.5)
+        ttl_lru_cache = MLXWrapperCache(max_size=2, ttl_seconds=1)
         with patch(
             "mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create"
         ) as mock_ttl_lru:
@@ -276,7 +416,7 @@ class TestMLXWrapperCacheTTL:
             ttl_lru_cache.get_wrapper("model1")
             time.sleep(0.1)
             ttl_lru_cache.get_wrapper("model2")
-            time.sleep(0.6)  # Both should expire
+            time.sleep(1.1)  # Both should expire
             ttl_lru_cache.get_wrapper("model3")  # Should trigger cleanup
             info = ttl_lru_cache.get_cache_info()
             assert info["cache_size"] == 1
@@ -321,3 +461,24 @@ class TestMLXWrapperCacheEdgeCases:
         info = large_cache.get_cache_info()
         assert info["max_size"] == 1000
         assert info["cache_size"] == 0
+
+    def test_set_max_size_zero_evicts_existing_entries(self):
+        """Setting max_size=0 should clear cached entries without hanging."""
+        cache = MLXWrapperCache(max_size=2, ttl_seconds=0)
+        with patch(
+            "mlx_omni_server.chat.mlx.wrapper_cache.ChatGenerator.create"
+        ) as mock_create:
+            mock_create.side_effect = [
+                MockChatGenerator("model1"),
+                MockChatGenerator("model2"),
+            ]
+            cache.get_wrapper("model1")
+            cache.get_wrapper("model2")
+
+        with patch(
+            "mlx_omni_server.chat.mlx.wrapper_cache.clear_mlx_memory"
+        ) as cleanup:
+            cache.set_max_size(0)
+
+        assert cache.get_cache_info()["cache_size"] == 0
+        cleanup.assert_called_once_with()
