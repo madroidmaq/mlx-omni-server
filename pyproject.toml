@@ -1,6 +1,6 @@
 [project]
 name = "mlx-omni-server"
-version = "0.5.2"
+version = "0.5.3"
 description = "MLX Omni Server is a server that provides OpenAI-compatible APIs using Apple's MLX framework."
 authors = [{ name = "madroid", email = "madroidmaq@gmail.com" }]
 requires-python = ">=3.11"
