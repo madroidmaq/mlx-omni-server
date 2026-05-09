@@ -64,7 +64,7 @@ class MlxAudioModel(TTSModelAdapter):
 
         generate_audio(
             text=request.input,
-            model_path=self.path_or_hf_repo,
+            model=self.path_or_hf_repo,
             voice=voice,
             speed=request.speed,
             lang_code=lang_code,

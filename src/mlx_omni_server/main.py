@@ -1,18 +1,28 @@
 import argparse
 import os
+from importlib import import_module
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from .chat.mlx.wrapper_cache import (
-    MODEL_CACHE_SIZE_ENV,
-    MODEL_CACHE_TTL_ENV,
-    get_model_cache_config_from_env,
-    wrapper_cache,
-)
 from .middleware.logging import RequestResponseLoggingMiddleware
-from .routers import api_router
 from .utils.logger import logger, set_logger_level
+
+
+def _initialize_kokoro_g2p() -> None:
+    from misaki.en import G2P
+
+    G2P(trf=False)
+
+
+_initialize_kokoro_g2p()
+wrapper_cache_module = import_module(".chat.mlx.wrapper_cache", __package__)
+MODEL_CACHE_SIZE_ENV = wrapper_cache_module.MODEL_CACHE_SIZE_ENV
+MODEL_CACHE_TTL_ENV = wrapper_cache_module.MODEL_CACHE_TTL_ENV
+get_model_cache_config_from_env = wrapper_cache_module.get_model_cache_config_from_env
+wrapper_cache = wrapper_cache_module.wrapper_cache
+api_router = import_module(".routers", __package__).api_router
 
 app = FastAPI(title="MLX Omni Server")
 
@@ -21,8 +31,6 @@ app.add_middleware(
     RequestResponseLoggingMiddleware,
     # exclude_paths=["/health"]
 )
-
-from fastapi.middleware.cors import CORSMiddleware
 
 app.include_router(api_router)
 
