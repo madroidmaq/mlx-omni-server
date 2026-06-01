@@ -1,10 +1,12 @@
 import json
+import os
 from typing import Generator, Optional
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
+from mlx_omni_server.chat.mlx.exo_chat_generator import get_exo_generator
 from mlx_omni_server.chat.openai.openai_adapter import OpenAIAdapter
 from mlx_omni_server.chat.openai.schema import (
     ChatCompletionRequest,
@@ -19,10 +21,13 @@ router = APIRouter(tags=["chat—completions"])
 async def create_chat_completion(request: ChatCompletionRequest):
     """Create a chat completion"""
 
+    model_id = os.environ.get("MLX_OMNI_MODEL") or request.model
+    exo = get_exo_generator(model_id)
     text_model = _create_text_model(
-        request.model,
+        model_id,
         request.get_extra_params().get("adapter_path"),
         request.get_extra_params().get("draft_model"),
+        exo_generator=exo,
     )
 
     if not request.stream:
@@ -49,6 +54,7 @@ def _create_text_model(
     model_id: str,
     adapter_path: Optional[str] = None,
     draft_model: Optional[str] = None,
+    exo_generator=None,
 ) -> OpenAIAdapter:
     """Create a text model based on the model parameters.
 
@@ -56,6 +62,8 @@ def _create_text_model(
     This avoids expensive model reloading when the same model configuration
     is used across different requests or API endpoints.
     """
+    if exo_generator is not None:
+        return OpenAIAdapter(wrapper=exo_generator)
     # Get cached or create new ChatGenerator
     wrapper = ChatGenerator.get_or_create(
         model_id=model_id,

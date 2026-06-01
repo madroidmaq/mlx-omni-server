@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 class MessageRole(str, Enum):
     USER = "user"
     ASSISTANT = "assistant"
+    SYSTEM = "system"  # Claude Code 2.1.154+ injects system-role messages into messages[]
 
 
 class StopReason(str, Enum):
@@ -145,11 +146,27 @@ class ThinkingConfigDisabled(BaseModel):
     type: Literal["disabled"] = "disabled"
 
 
-ThinkingConfig = Union[ThinkingConfigEnabled, ThinkingConfigDisabled]
+
+
+class ThinkingConfigAdaptive(BaseModel):
+    """Adaptive thinking configuration (Claude Code sends type='adaptive')."""
+    model_config = {"extra": "allow"}
+    type: Literal["adaptive"] = "adaptive"
+    budget_tokens: Optional[int] = None
+
+ThinkingConfig = Union[ThinkingConfigEnabled, ThinkingConfigDisabled, ThinkingConfigAdaptive]
 
 
 # Request Messages
+class RequestThinkingBlock(BaseModel):
+    model_config = {"extra": "allow"}
+    type: Literal["thinking"] = "thinking"
+    thinking: Optional[str] = None
+    signature: Optional[str] = None
+
+
 class RequestTextBlock(BaseModel):
+    model_config = {"extra": "allow"}
     """Text block in request."""
 
     type: Literal["text"] = "text"
@@ -157,6 +174,7 @@ class RequestTextBlock(BaseModel):
 
 
 class RequestImageBlock(BaseModel):
+    model_config = {"extra": "allow"}
     """Image block in request (base64 format)."""
 
     type: Literal["image"] = "image"
@@ -164,6 +182,7 @@ class RequestImageBlock(BaseModel):
 
 
 class RequestToolUseBlock(BaseModel):
+    model_config = {"extra": "allow"}
     """Tool use block in request."""
 
     type: Literal["tool_use"] = "tool_use"
@@ -173,6 +192,7 @@ class RequestToolUseBlock(BaseModel):
 
 
 class RequestToolResultBlock(BaseModel):
+    model_config = {"extra": "allow"}
     """Tool result block in request."""
 
     type: Literal["tool_result"] = "tool_result"
@@ -182,7 +202,7 @@ class RequestToolResultBlock(BaseModel):
 
 
 RequestContentBlock = Union[
-    RequestTextBlock, RequestImageBlock, RequestToolUseBlock, RequestToolResultBlock
+    RequestTextBlock, RequestThinkingBlock, RequestImageBlock, RequestToolUseBlock, RequestToolResultBlock
 ]
 
 
@@ -195,6 +215,7 @@ class InputMessage(BaseModel):
 
 # System Prompt
 class SystemTextBlock(BaseModel):
+    model_config = {"extra": "allow"}
     """System text block."""
 
     type: Literal["text"] = "text"
@@ -236,6 +257,8 @@ class MessagesRequest(BaseModel):
     top_p: Optional[float] = Field(None, ge=0, le=1)
     top_k: Optional[int] = Field(None, ge=0)
     stop_sequences: Optional[List[str]] = None
+    min_p: Optional[float] = Field(None, ge=0, le=1)
+    repetition_penalty: Optional[float] = Field(None, ge=0)
     stream: Optional[bool] = False
     tools: Optional[List[AnthropicTool]] = None
     tool_choice: Optional[ToolChoice] = None

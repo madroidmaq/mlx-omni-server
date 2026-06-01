@@ -1,4 +1,7 @@
 import json
+import os
+
+from mlx_omni_server.chat.mlx.exo_chat_generator import get_exo_generator
 from typing import Generator, Optional
 
 from fastapi import APIRouter, Query
@@ -63,11 +66,14 @@ async def list_anthropic_models(
 async def create_message(request: MessagesRequest):
     """Create an Anthropic Messages API completion"""
 
+    model_id = os.environ.get("MLX_OMNI_MODEL") or request.model
+    exo = get_exo_generator(model_id)
     anthropic_model = _create_anthropic_model(
-        request.model,
+        model_id,
         # Extract extra params if needed - for now use defaults
         None,  # adapter_path
         None,  # draft_model
+        exo_generator=exo,
     )
 
     if not request.stream:
@@ -93,6 +99,7 @@ def _create_anthropic_model(
     model_id: str,
     adapter_path: Optional[str] = None,
     draft_model: Optional[str] = None,
+    exo_generator=None,
 ) -> AnthropicMessagesAdapter:
     """Create an Anthropic Messages adapter based on the model parameters.
 
@@ -100,6 +107,10 @@ def _create_anthropic_model(
     This avoids expensive model reloading when the same model configuration
     is used across different requests or API endpoints.
     """
+    # Use Exo cluster if available, otherwise load model locally
+    if exo_generator is not None:
+        return AnthropicMessagesAdapter(wrapper=exo_generator)
+
     # Get cached or create new ChatGenerator
     wrapper = ChatGenerator.get_or_create(
         model_id=model_id,

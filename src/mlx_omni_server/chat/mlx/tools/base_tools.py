@@ -133,7 +133,7 @@ def extract_tools(text: str) -> Optional[List[ToolCall]]:
     # If the model attempted a <tool_call> but we couldn't parse it, do NOT fall back
     # to shallow regex parsing (it can produce empty args {} and trigger tool-error loops).
     if saw_tool_call_block:
-        logger.warning(
+        logger.debug(
             "Detected <tool_call> block(s) but failed to parse; returning no tool calls"
         )
         return None
