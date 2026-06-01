@@ -91,6 +91,7 @@ class ExoChatGenerator:
             payload["stop"] = stop_words
         if tools:
             payload["tools"] = tools
+        payload["use_prefix_cache"] = True
         # Pass through any extra kwargs Exo might support
         for k, v in kwargs.items():
             if v is not None and k not in payload:
