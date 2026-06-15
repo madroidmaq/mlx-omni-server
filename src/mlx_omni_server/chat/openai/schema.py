@@ -81,7 +81,7 @@ class Role(str, Enum):
 
 class ChatMessage(BaseModel):
     role: Role
-    content: Optional[Union[str, List[Dict[str, str]]]] = None
+    content: Optional[Union[str, List[Dict[str, Any]]]] = None
     reasoning: Optional[str] = None
     name: Optional[str] = None
     tool_calls: Optional[List[ToolCall]] = None
