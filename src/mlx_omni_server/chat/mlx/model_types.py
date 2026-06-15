@@ -140,6 +140,12 @@ def load_mlx_model(
                         else:
                             self.tokenizer = processor
 
+                        # OutlinesLogitsProcessor accesses tokenizer._tokenizer
+                        # (outlines_logits_processor.py), so expose it here too —
+                        # otherwise json_schema/guided decoding with a VLM raises
+                        # AttributeError: 'VLMTokenizerWrapper' has no '_tokenizer'.
+                        self._tokenizer = self.tokenizer
+
                         # Load config from model path for apply_chat_template
                         # We'll get it from the model's config attribute if available
                         self.config = {"model_type": "gemma4"}  # Default
