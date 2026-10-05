@@ -13,9 +13,13 @@ def test_is_vlm_model_detects_gemma4_config_and_model_id():
     assert _is_vlm_model("mlx-community/qwen3", {"model_type": "qwen3"}) is False
 
 
-def test_load_mlx_model_uses_mlx_vlm_for_gemma4(monkeypatch):
+def test_is_vlm_model_detects_glm_ocr_config():
+    assert _is_vlm_model("mlx-community/GLM-OCR", {"model_type": "glm_ocr"}) is True
+
+
+def test_load_mlx_model_uses_mlx_vlm_for_glm_ocr(monkeypatch):
     class RawVLMModel:
-        config = {"model_type": "gemma4"}
+        config = {"model_type": "glm_ocr"}
 
         def __call__(self, *args, **kwargs):
             return "called"
@@ -51,7 +55,7 @@ def test_load_mlx_model_uses_mlx_vlm_for_gemma4(monkeypatch):
 
     monkeypatch.setattr(model_types, "get_model_path", lambda model_id: "/fake/model")
     monkeypatch.setattr(
-        model_types, "load_config", lambda model_path: {"model_type": "gemma4"}
+        model_types, "load_config", lambda model_path: {"model_type": "glm_ocr"}
     )
 
     class FakeChatTemplate:
@@ -67,7 +71,7 @@ def test_load_mlx_model_uses_mlx_vlm_for_gemma4(monkeypatch):
         fake_tools_module,
     )
 
-    loaded = load_mlx_model("test-gemma4-vlm", draft_model_id="draft")
+    loaded = load_mlx_model("test-glm-ocr", draft_model_id="draft")
 
     assert isinstance(loaded, MLXModel)
     assert loaded.is_vlm_model is True

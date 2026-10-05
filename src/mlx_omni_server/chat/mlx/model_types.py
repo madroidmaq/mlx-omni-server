@@ -44,7 +44,7 @@ except ImportError:
 
 
 # Models that require mlx_vlm instead of mlx_lm
-MLX_VLM_ONLY_MODELS = {"gemma4"}
+MLX_VLM_ONLY_MODELS = {"gemma4", "glm_ocr"}
 
 
 def _is_vlm_model(model_id: str, config: dict) -> bool:
@@ -98,7 +98,7 @@ def load_mlx_model(
 
         # Check if we need to use mlx_vlm for this model
         if _is_vlm_model(model_id, config):
-            # Use mlx_vlm for Gemma 4 and other VLM-only models
+            # Use mlx_vlm for Gemma 4, GLM-OCR, and other VLM-only models
             logger.info(
                 f"Loading {model_id} using mlx_vlm (model_type: {config.get('model_type')})"
             )
